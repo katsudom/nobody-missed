@@ -86,7 +86,15 @@ const tickTimer = table(
   }
 );
 
-const spacetimedb = schema({ request, responder, outbox, call, tickTimer });
+// Who may use the dev tools (Inject 2,000, Reset). Hex identities; added by the owner with makeAdmin.
+const admin = table(
+  { name: 'admin', public: true },
+  {
+    identityHex: t.string().primaryKey(),
+  }
+);
+
+const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin });
 export default spacetimedb;
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
@@ -356,6 +364,29 @@ export const registerResponder = spacetimedb.reducer({ name: t.string() }, (ctx,
   else ctx.db.responder.insert({ identity: ctx.sender, name: clean, online: true });
 });
 
+// ---------- Admin (dev tools) ----------
+// Dominic's `spacetime login` identity (his terminal). Always an admin; the only one who can add admins.
+const OWNER_HEX = 'c200283d09f118ee9b0b658fa4929b296cd5c10374ffb52e3766cf6d1cd76588';
+
+function requireAdmin(ctx: Ctx, what: string) {
+  const me = ctx.sender.toHexString();
+  if (me !== OWNER_HEX && !ctx.db.admin.identityHex.find(me)) {
+    throw new SenderError(`${what} is locked to admins (ask Dominic)`);
+  }
+}
+
+export const makeAdmin = spacetimedb.reducer({ identityHex: t.string() }, (ctx, { identityHex }) => {
+  if (ctx.sender.toHexString() !== OWNER_HEX) throw new SenderError('only the owner can add admins');
+  const hex = identityHex.trim().toLowerCase().replace(/^0x/, '');
+  if (!/^[0-9a-f]{64}$/.test(hex)) throw new SenderError('not an identity (64 hex characters)');
+  if (!ctx.db.admin.identityHex.find(hex)) ctx.db.admin.insert({ identityHex: hex });
+});
+
+export const removeAdmin = spacetimedb.reducer({ identityHex: t.string() }, (ctx, { identityHex }) => {
+  if (ctx.sender.toHexString() !== OWNER_HEX) throw new SenderError('only the owner can remove admins');
+  ctx.db.admin.identityHex.delete(identityHex.trim().toLowerCase().replace(/^0x/, ''));
+});
+
 // ---------- Demo helpers ----------
 const SAMPLES: { text: string; facts: object }[] = [
   { text: 'Power out, my dad is on oxygen, he is 79', facts: { age: 79, medical: ['oxygen'], hazards: ['no_power'], quotes: ['Power out', 'on oxygen', 'he is 79'] } },
@@ -369,6 +400,7 @@ const SAMPLES: { text: string; facts: object }[] = [
 ];
 
 export const injectLoad = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
+  requireAdmin(ctx, 'Inject');
   const count = Math.min(n, 5000);
   for (let i = 0; i < count; i++) {
     const s = SAMPLES[ctx.random.integerInRange(0, SAMPLES.length - 1)];
@@ -387,6 +419,7 @@ export const injectLoad = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
 });
 
 export const resetDemo = spacetimedb.reducer((ctx) => {
+  requireAdmin(ctx, 'Reset');
   for (const r of [...ctx.db.request.iter()]) ctx.db.request.id.delete(r.id);
   for (const o of [...ctx.db.outbox.iter()]) ctx.db.outbox.id.delete(o.id);
   for (const c of [...ctx.db.call.iter()]) ctx.db.call.id.delete(c.id);

@@ -38,8 +38,10 @@ import CallResultReducer from "./call_result_reducer";
 import ClaimRequestReducer from "./claim_request_reducer";
 import CompleteOutboxReducer from "./complete_outbox_reducer";
 import InjectLoadReducer from "./inject_load_reducer";
+import MakeAdminReducer from "./make_admin_reducer";
 import RegisterResponderReducer from "./register_responder_reducer";
 import ReleaseRequestReducer from "./release_request_reducer";
+import RemoveAdminReducer from "./remove_admin_reducer";
 import ResetDemoReducer from "./reset_demo_reducer";
 import ResolveRequestReducer from "./resolve_request_reducer";
 import SetFactsReducer from "./set_facts_reducer";
@@ -50,6 +52,7 @@ import VictimRepliedReducer from "./victim_replied_reducer";
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import AdminRow from "./admin_table";
 import CallRow from "./call_table";
 import OutboxRow from "./outbox_table";
 import RequestRow from "./request_table";
@@ -59,6 +62,17 @@ import ResponderRow from "./responder_table";
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  admin: __table({
+    name: 'admin',
+    indexes: [
+      { accessor: 'identityHex', name: 'admin_identity_hex_idx_btree', algorithm: 'btree', columns: [
+        'identityHex',
+      ] },
+    ],
+    constraints: [
+      { name: 'admin_identity_hex_key', constraint: 'unique', columns: ['identityHex'] },
+    ],
+  }, AdminRow),
   call: __table({
     name: 'call',
     indexes: [
@@ -123,8 +137,10 @@ const reducersSchema = __reducers(
   __reducerSchema("claim_request", ClaimRequestReducer),
   __reducerSchema("complete_outbox", CompleteOutboxReducer),
   __reducerSchema("inject_load", InjectLoadReducer),
+  __reducerSchema("make_admin", MakeAdminReducer),
   __reducerSchema("register_responder", RegisterResponderReducer),
   __reducerSchema("release_request", ReleaseRequestReducer),
+  __reducerSchema("remove_admin", RemoveAdminReducer),
   __reducerSchema("reset_demo", ResetDemoReducer),
   __reducerSchema("resolve_request", ResolveRequestReducer),
   __reducerSchema("set_facts", SetFactsReducer),
