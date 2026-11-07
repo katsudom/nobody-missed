@@ -1,4 +1,5 @@
 import { memo, useMemo, useRef, useState } from 'react';
+import DevTools from './DevTools';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
@@ -184,8 +185,6 @@ export default function Board() {
         </div>
         <span className="spacer" />
         <span className="simtag">Simulated storm · synthetic policyholders</span>
-        <button className="btn big" onClick={onInject}>Inject 2,000</button>
-        <button className="btn big danger" onClick={() => setConfirmReset(true)}>Reset demo</button>
       </header>
 
       <section className="card summary">
@@ -262,6 +261,8 @@ export default function Board() {
           )}
         </div>
       </div>
+
+      <DevTools onInject={onInject} onAskReset={() => setConfirmReset(true)} />
 
       {confirmReset && (
         <div className="modal" onClick={() => !resetting && setConfirmReset(false)}>

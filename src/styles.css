@@ -149,3 +149,12 @@ input, textarea { font: inherit; font-size: 22px; padding: 12px 14px; border-rad
 details { margin-top: 16px; }
 summary { cursor: pointer; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
 .modalbox .actions { justify-content: flex-end; }
+
+/* Floating dev tools (bottom-right) */
+.devpill { position: fixed; right: 16px; bottom: 16px; z-index: 30; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: .04em; padding: 6px 12px; border-radius: 999px; border: 1px solid #3a3a40; background: #1d1d20cc; color: var(--muted); cursor: pointer; opacity: .6; }
+.devpill:hover, .devpill:focus-visible { opacity: 1; color: var(--text); }
+.devpanel { position: fixed; right: 16px; bottom: 16px; z-index: 30; display: flex; flex-direction: column; gap: 10px; width: 240px; padding: 14px; background: var(--card); border: 1px solid #3a3a40; border-radius: 12px; box-shadow: 0 8px 30px #0008; }
+.devpanel .meta { margin: 0; font-size: 13px; }
+.devhead { display: flex; align-items: center; justify-content: space-between; }
+.devx { font: inherit; font-size: 20px; line-height: 1; padding: 2px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.devx:hover { color: var(--text); background: #2a2a2e; }
