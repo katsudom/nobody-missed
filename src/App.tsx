@@ -1,25 +1,82 @@
-// Placeholder until the responder board (build step 4, SPEC §6).
-import { tables } from './module_bindings';
-import { useSpacetimeDB, useTable } from 'spacetimedb/react';
+import { useEffect, useState } from 'react';
+import { useSpacetimeDB } from 'spacetimedb/react';
+import Board from './Board';
+import VictimSim from './VictimSim';
+import { ToastProvider, useRun } from './lib';
+import './styles.css';
 
-function App() {
-  const { isActive: connected } = useSpacetimeDB();
-  const [requests] = useTable(tables.request);
-  const sorted = [...requests].sort((a, b) => b.score - a.score);
+const NAME_KEY = 'nobody-missed/responder-name';
 
+function readName() {
+  try { return localStorage.getItem(NAME_KEY) ?? ''; } catch { return ''; }
+}
+
+// Hash routing (#/board, #/victim-sim) so it works on GitHub Pages with no server rewrites.
+function useRoute() {
+  const get = () => (window.location.hash.replace(/^#\/?/, '') || 'board');
+  const [route, setRoute] = useState(get);
+  useEffect(() => {
+    const on = () => setRoute(get());
+    window.addEventListener('hashchange', on);
+    return () => window.removeEventListener('hashchange', on);
+  }, []);
+  return route;
+}
+
+function NamePrompt({ onDone }: { onDone: (name: string) => void }) {
+  const run = useRun();
+  const [name, setName] = useState('');
+  const submit = async () => {
+    const n = name.trim();
+    if (!n) return;
+    if (await run((c) => c.reducers.registerResponder({ name: n }))) {
+      try { localStorage.setItem(NAME_KEY, n); } catch { /* storage blocked: still works this session */ }
+      onDone(n);
+    }
+  };
   return (
-    <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>
-      <h1>Nobody Missed</h1>
-      <p>{connected ? 'Connected' : 'Connecting…'} · {requests.length} requests</p>
-      <ul>
-        {sorted.slice(0, 50).map((r) => (
-          <li key={r.id.toString()}>
-            [{r.tier}] {r.score} · {r.state} · {r.rawText}
-          </li>
-        ))}
-      </ul>
+    <div className="modal">
+      <div className="modalbox">
+        <h1>Who's responding?</h1>
+        <input
+          autoFocus
+          value={name}
+          maxLength={40}
+          placeholder="Your name"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+        />
+        <button className="btn big claim" onClick={submit}>Join the board</button>
+      </div>
     </div>
   );
 }
 
-export default App;
+function Shell() {
+  const { isActive } = useSpacetimeDB();
+  const route = useRoute();
+  const [name, setName] = useState(readName);
+  const run = useRun();
+
+  // Saved name: re-register on each connect so this browser's identity is known to the db.
+  useEffect(() => {
+    if (isActive && name) void run((c) => c.reducers.registerResponder({ name }));
+  }, [isActive, name]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (route === 'victim-sim') return <VictimSim />;
+  return (
+    <>
+      {!isActive && <div className="conn">Connecting…</div>}
+      <Board />
+      {!name && isActive && <NamePrompt onDone={setName} />}
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <ToastProvider>
+      <Shell />
+    </ToastProvider>
+  );
+}
