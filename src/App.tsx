@@ -22,7 +22,7 @@ function App() {
           </li>
         ))}
       </ul>
-      {selected && <Drawer request={selected} onClose={() => setSelectedId(null)} />}
+      {selected && <Drawer key={selected.id.toString()} request={selected} onClose={() => setSelectedId(null)} />}
     </div>
   );
 }
