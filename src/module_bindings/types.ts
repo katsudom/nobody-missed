@@ -8,9 +8,62 @@ import {
   t as __t,
   type AlgebraicTypeType as __AlgebraicTypeType,
   type Infer as __Infer,
-} from 'spacetimedb';
+} from "spacetimedb";
 
-export const Person = __t.object('Person', {
-  name: __t.string(),
+export const Call = __t.object("Call", {
+  id: __t.u64(),
+  requestId: __t.u64(),
+  externalId: __t.string(),
+  result: __t.string(),
+  dtmf: __t.string(),
+  createdAt: __t.timestamp(),
 });
-export type Person = __Infer<typeof Person>;
+export type Call = __Infer<typeof Call>;
+
+export const Outbox = __t.object("Outbox", {
+  id: __t.u64(),
+  requestId: __t.u64(),
+  kind: __t.string(),
+  payload: __t.string(),
+  status: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type Outbox = __Infer<typeof Outbox>;
+
+export const Request = __t.object("Request", {
+  id: __t.u64(),
+  victimHandle: __t.string(),
+  spaceId: __t.string(),
+  photonSenderId: __t.string(),
+  platform: __t.string(),
+  rawText: __t.string(),
+  facts: __t.string(),
+  factsStatus: __t.string(),
+  baseScore: __t.u32(),
+  escalation: __t.u32(),
+  score: __t.u32(),
+  tier: __t.string(),
+  reasons: __t.string(),
+  state: __t.string(),
+  claimedBy: __t.option(__t.identity()),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+  lastVictimReplyAt: __t.timestamp(),
+  checkinsSent: __t.u32(),
+  callsPlaced: __t.u32(),
+});
+export type Request = __Infer<typeof Request>;
+
+export const Responder = __t.object("Responder", {
+  identity: __t.identity(),
+  name: __t.string(),
+  online: __t.bool(),
+});
+export type Responder = __Infer<typeof Responder>;
+
+export const TickTimer = __t.object("TickTimer", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type TickTimer = __Infer<typeof TickTimer>;
+

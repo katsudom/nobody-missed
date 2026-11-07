@@ -18,7 +18,9 @@
     "lib": ["ES2021", "dom"],
     "module": "ESNext",
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["./**/*"]
+  "include": ["./**/*"],
+  "exclude": ["node_modules", "**/*.test.ts"]
 }

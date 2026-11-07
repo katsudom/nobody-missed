@@ -1,68 +1,23 @@
-import { useState } from 'react';
-import { tables, reducers } from './module_bindings';
-import { useSpacetimeDB, useTable, useReducer } from 'spacetimedb/react';
+// Placeholder until the responder board (build step 4, SPEC §6).
+import { tables } from './module_bindings';
+import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 
 function App() {
-  const [name, setName] = useState('');
-
-  const conn = useSpacetimeDB();
-  const { isActive: connected } = conn;
-
-  // Subscribe to all people in the database
-  const [people] = useTable(tables.person);
-
-  const addReducer = useReducer(reducers.add);
-
-  const addPerson = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !connected) return;
-
-    // Call the add reducer
-    addReducer({ name: name });
-    setName('');
-  };
+  const { isActive: connected } = useSpacetimeDB();
+  const [requests] = useTable(tables.request);
+  const sorted = [...requests].sort((a, b) => b.score - a.score);
 
   return (
-    <div style={{ padding: '2rem' }}>
-      <h1>SpacetimeDB React App</h1>
-
-      <div style={{ marginBottom: '1rem' }}>
-        Status:{' '}
-        <strong style={{ color: connected ? 'green' : 'red' }}>
-          {connected ? 'Connected' : 'Disconnected'}
-        </strong>
-      </div>
-
-      <form onSubmit={addPerson} style={{ marginBottom: '2rem' }}>
-        <input
-          type="text"
-          placeholder="Enter name"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          style={{ padding: '0.5rem', marginRight: '0.5rem' }}
-          disabled={!connected}
-        />
-        <button
-          type="submit"
-          style={{ padding: '0.5rem 1rem' }}
-          disabled={!connected}
-        >
-          Add Person
-        </button>
-      </form>
-
-      <div>
-        <h2>People ({people.length})</h2>
-        {people.length === 0 ? (
-          <p>No people yet. Add someone above!</p>
-        ) : (
-          <ul>
-            {people.map((person, index) => (
-              <li key={index}>{person.name}</li>
-            ))}
-          </ul>
-        )}
-      </div>
+    <div style={{ padding: '2rem', fontFamily: 'system-ui' }}>
+      <h1>Nobody Missed</h1>
+      <p>{connected ? 'Connected' : 'Connecting…'} · {requests.length} requests</p>
+      <ul>
+        {sorted.slice(0, 50).map((r) => (
+          <li key={r.id.toString()}>
+            [{r.tier}] {r.score} · {r.state} · {r.rawText}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

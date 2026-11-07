@@ -3,11 +3,32 @@
 
 /* eslint-disable */
 /* tslint:disable */
-import { type Infer as __Infer } from 'spacetimedb';
+import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
-import AddReducer from '../add_reducer';
-import SayHelloReducer from '../say_hello_reducer';
+import CallResultReducer from "../call_result_reducer";
+import ClaimRequestReducer from "../claim_request_reducer";
+import CompleteOutboxReducer from "../complete_outbox_reducer";
+import InjectLoadReducer from "../inject_load_reducer";
+import RegisterResponderReducer from "../register_responder_reducer";
+import ReleaseRequestReducer from "../release_request_reducer";
+import ResetDemoReducer from "../reset_demo_reducer";
+import ResolveRequestReducer from "../resolve_request_reducer";
+import SetFactsReducer from "../set_facts_reducer";
+import SubmitRequestReducer from "../submit_request_reducer";
+import TakeOutboxReducer from "../take_outbox_reducer";
+import VictimRepliedReducer from "../victim_replied_reducer";
 
-export type AddParams = __Infer<typeof AddReducer>;
-export type SayHelloParams = __Infer<typeof SayHelloReducer>;
+export type CallResultParams = __Infer<typeof CallResultReducer>;
+export type ClaimRequestParams = __Infer<typeof ClaimRequestReducer>;
+export type CompleteOutboxParams = __Infer<typeof CompleteOutboxReducer>;
+export type InjectLoadParams = __Infer<typeof InjectLoadReducer>;
+export type RegisterResponderParams = __Infer<typeof RegisterResponderReducer>;
+export type ReleaseRequestParams = __Infer<typeof ReleaseRequestReducer>;
+export type ResetDemoParams = __Infer<typeof ResetDemoReducer>;
+export type ResolveRequestParams = __Infer<typeof ResolveRequestReducer>;
+export type SetFactsParams = __Infer<typeof SetFactsReducer>;
+export type SubmitRequestParams = __Infer<typeof SubmitRequestReducer>;
+export type TakeOutboxParams = __Infer<typeof TakeOutboxReducer>;
+export type VictimRepliedParams = __Infer<typeof VictimRepliedReducer>;
+
