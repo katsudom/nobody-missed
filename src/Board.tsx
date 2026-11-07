@@ -4,20 +4,40 @@ import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
 import RequestRow from './module_bindings/request_table';
 import {
-  Highlighted, mmss, parseJson, parseQuotes, parseReasons, tsMs, useNow, useRun,
+  Highlighted, mmss, parseJson, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
 } from './lib';
+import { personFor } from './policyholders';
+import ImpactMap from './ImpactMap';
 
 type Request = Infer<typeof RequestRow>;
 const MAX_ROWS = 200;
 
+type Cat = 'help' | 'waiting' | 'silent' | 'claimed' | 'safe';
+const CATS: { key: Cat; label: string; color: string }[] = [
+  { key: 'help', label: 'Needs help', color: 'var(--red)' },
+  { key: 'waiting', label: 'Waiting', color: 'var(--amber)' },
+  { key: 'silent', label: 'Silent', color: 'var(--grey)' },
+  { key: 'claimed', label: 'Claimed', color: 'var(--blue)' },
+  { key: 'safe', label: 'Safe', color: 'var(--green)' },
+];
+const CAT_COLOR = Object.fromEntries(CATS.map((c) => [c.key, c.color])) as Record<Cat, string>;
+
+function catOf(r: Request): Cat {
+  if (r.state === 'closed') return 'safe';
+  if (r.state === 'flagged') return 'silent';
+  if (r.claimedBy) return 'claimed';
+  if (r.state === 'checkin_text_sent' || r.state === 'call_placed') return 'waiting';
+  return 'help';
+}
+
 const STATE_LABEL: Record<string, string> = {
-  new: 'new',
-  waiting: 'waiting',
-  checkin_text_sent: 'check-in text sent',
-  call_placed: 'call placed',
-  flagged: 'needs welfare check',
-  claimed: 'claimed',
-  closed: 'closed',
+  new: 'Needs help',
+  waiting: 'Needs help',
+  checkin_text_sent: 'Text sent',
+  call_placed: 'Call placed',
+  flagged: 'Needs welfare check',
+  claimed: 'Claimed',
+  closed: 'Safe',
 };
 
 function compare(a: Request, b: Request) {
@@ -34,46 +54,47 @@ type RowProps = {
   mine: boolean;
   claimer: string;
   fresh: boolean;
+  selected: boolean;
   onOpen: (id: bigint) => void;
   onClaim: (id: bigint) => void;
   onRelease: (id: bigint) => void;
   onResolve: (id: bigint) => void;
 };
 
-const Row = memo(function Row({ r, now, mine, claimer, fresh, onOpen, onClaim, onRelease, onResolve }: RowProps) {
+const Row = memo(function Row({ r, now, mine, claimer, fresh, selected, onOpen, onClaim, onRelease, onResolve }: RowProps) {
   const quotes = useMemo(() => parseQuotes(r.facts), [r.facts]);
   const reasons = useMemo(() => parseReasons(r.reasons), [r.reasons]);
+  const person = useMemo(() => personFor(r), [r.id, r.victimHandle, r.rawText]); // eslint-disable-line react-hooks/exhaustive-deps
   const claimed = !!r.claimedBy;
   const stop = (fn: (id: bigint) => void) => (e: React.MouseEvent) => {
     e.stopPropagation();
     fn(r.id);
   };
-
-  const timer = claimed ? `claimed by ${claimer}` : `unclaimed ${mmss(now - tsMs(r.createdAt))}`;
+  const timer = claimed ? '' : `unclaimed ${mmss(now - tsMs(r.createdAt))}`;
 
   return (
     <div
-      className={`row ${r.state === 'flagged' ? 'flagged' : ''} ${fresh ? 'pulse' : ''}`}
+      className={`row ${r.state === 'flagged' ? 'flagged' : ''} ${selected ? 'selected' : ''} ${fresh ? 'pulse' : ''}`}
       onClick={() => onOpen(r.id)}
     >
-      <div className="rowhead">
-        <span className={`chip tier-${r.tier}`}>{r.tier}</span>
-        <span className="score">{r.score}</span>
-        <span className={`badge state-${r.state}`}>{STATE_LABEL[r.state] ?? r.state}</span>
-        <span className="timer">{timer}</span>
-        <span className="spacer" />
-        <div className="actions">
-          {!claimed && r.state !== 'closed' && <button className="btn claim" onClick={stop(onClaim)}>Claim</button>}
-          {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
-          {r.state !== 'closed' && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
-        </div>
-      </div>
-      <div className="text"><Highlighted text={r.rawText} quotes={quotes} /></div>
-      {reasons.length > 0 && (
-        <div className="reasons">
+      <span className={`pill state-${r.state}`}>{STATE_LABEL[r.state] ?? r.state}</span>
+      <div className="main">
+        <div className="name">{person.name}</div>
+        <div className="text"><Highlighted text={r.rawText} quotes={quotes} /></div>
+        <div className="sub">
+          <span className="issue">{person.issue}</span>
           {reasons.map((x, i) => <span key={i} className="reason">{x}</span>)}
         </div>
-      )}
+      </div>
+      <span className="timer">{timer}</span>
+      <div className={`bar tier-${r.tier}`}><i style={{ width: `${Math.min(100, r.score)}%` }} /></div>
+      <span className={`score tier-${r.tier}`}>{r.score}</span>
+      <div className="actions">
+        {claimed && <span className="onway">{claimer} is on the way</span>}
+        {!claimed && r.state !== 'closed' && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
+        {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
+        {r.state !== 'closed' && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
+      </div>
     </div>
   );
 });
@@ -81,10 +102,14 @@ const Row = memo(function Row({ r, now, mine, claimer, fresh, onOpen, onClaim, o
 export default function Board() {
   const { identity } = useSpacetimeDB();
   const run = useRun();
+  const toast = useToast();
   const now = useNow();
   const [requests, ready] = useTable(tables.request);
   const [responders] = useTable(tables.responder);
   const [selected, setSelected] = useState<bigint | null>(null);
+  const [filter, setFilter] = useState<Cat | 'all'>('all');
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const names = useMemo(() => {
     const m = new Map<string, string>();
@@ -92,16 +117,25 @@ export default function Board() {
     return m;
   }, [responders]);
 
-  const { top, counts, total } = useMemo(() => {
-    const open = requests.filter((r) => r.state !== 'closed');
-    const c = { open: open.length, critical: 0, flagged: 0, claimed: 0 };
-    for (const r of open) {
-      if (r.tier === 'critical') c.critical++;
-      if (r.state === 'flagged') c.flagged++;
-      if (r.claimedBy) c.claimed++;
+  const { top, counts, total, open, critical } = useMemo(() => {
+    const c: Record<Cat, number> = { help: 0, waiting: 0, silent: 0, claimed: 0, safe: 0 };
+    let crit = 0;
+    const shown: Request[] = [];
+    for (const r of requests) {
+      const k = catOf(r);
+      c[k]++;
+      if (k !== 'safe' && r.tier === 'critical') crit++;
+      if (filter === 'all' || filter === k) shown.push(r);
     }
-    return { top: [...open].sort(compare).slice(0, MAX_ROWS), counts: c, total: open.length };
-  }, [requests]);
+    return {
+      top: shown.sort(compare).slice(0, MAX_ROWS),
+      counts: c,
+      total: requests.length,
+      open: requests.length - c.safe,
+      critical: crit,
+    };
+  }, [requests, filter]);
+  const shownTotal = filter === 'all' ? total : counts[filter];
 
   // Pulse only rows that arrive after the first full load.
   const seen = useRef<Set<string> | null>(null);
@@ -119,69 +153,144 @@ export default function Board() {
   const onRelease = (id: bigint) => run((c) => c.reducers.releaseRequest({ requestId: id }));
   const onResolve = (id: bigint) => run((c) => c.reducers.resolveRequest({ requestId: id }));
   const onInject = () => run((c) => c.reducers.injectLoad({ n: 2000 }));
-  const onReset = () => {
-    if (window.confirm('Reset demo clears the SHARED database for EVERYONE. Has the whole team agreed?')) {
-      run((c) => c.reducers.resetDemo({}));
+  const doReset = async () => {
+    setResetting(true);
+    const ok = await run((c) => c.reducers.resetDemo({}));
+    setResetting(false);
+    setConfirmReset(false);
+    if (ok) {
+      setSelected(null);
+      toast('Demo reset: all requests cleared for everyone', true);
     }
   };
 
-  const selectedReq = selected === null ? undefined : requests.find((r) => r.id === selected);
+  // Detail panel shows the clicked row, or the top-ranked one until you click.
+  const selectedReq =
+    (selected !== null ? requests.find((r) => r.id === selected) : undefined) ?? top[0];
+
+  const dots = useMemo(
+    () => top.map((r) => ({ id: r.id, color: CAT_COLOR[catOf(r)], big: r.tier === 'critical' })),
+    [top]
+  );
+
+  const handled = total ? Math.round(((counts.claimed + counts.safe) / total) * 100) : 0;
 
   return (
     <div className="board">
-      <header className="topbar">
-        <h1>Nobody Missed</h1>
-        <div className="counts">
-          <Count label="open" n={counts.open} />
-          <Count label="critical" n={counts.critical} cls="critical" />
-          <Count label="flagged" n={counts.flagged} cls="flagged" />
-          <Count label="claimed" n={counts.claimed} />
+      <header className="head">
+        <div>
+          <div className="eyebrow">Nobody Missed · Responder board</div>
+          <h1>Check-In Command Center</h1>
         </div>
         <span className="spacer" />
+        <span className="simtag">Simulated storm · synthetic policyholders</span>
         <button className="btn big" onClick={onInject}>Inject 2,000</button>
-        <button className="btn big danger" onClick={onReset}>Reset demo</button>
+        <button className="btn big danger" onClick={() => setConfirmReset(true)}>Reset demo</button>
       </header>
 
-      <main className="list">
-        {!ready && <p className="empty">Loading…</p>}
-        {ready && top.length === 0 && <p className="empty">No open requests.</p>}
-        {top.map((r) => {
-          const hex = r.claimedBy?.toHexString();
-          return (
-            <Row
-              key={r.id.toString()}
-              r={r}
+      <section className="card summary">
+        <div className="sumtop">
+          <div>
+            <span className="eyebrow">Claimed or safe</span> <span className="pct">{handled}%</span>
+          </div>
+          <div className="meta">{open.toLocaleString()} open · {critical.toLocaleString()} critical · {total.toLocaleString()} total</div>
+        </div>
+        <div className="stack">
+          {CATS.map((c) => counts[c.key] > 0 && (
+            <i key={c.key} style={{ flex: counts[c.key], background: c.color }} />
+          ))}
+        </div>
+        <div className="legend">
+          {CATS.map((c) => (
+            <span key={c.key}><b className="dot" style={{ background: c.color }} />{counts[c.key].toLocaleString()} <em>{c.label}</em></span>
+          ))}
+        </div>
+      </section>
+
+      <div className="cols">
+        <section className="card queue">
+          <div className="qhead">
+            <h2>Ranked queue</h2>
+            <div className="tabs">
+              <button className={`tab ${filter === 'all' ? 'on' : ''}`} onClick={() => setFilter('all')}>All <span>{total.toLocaleString()}</span></button>
+              {CATS.map((c) => (
+                <button key={c.key} className={`tab ${filter === c.key ? 'on' : ''}`} onClick={() => setFilter(c.key)}>
+                  <b className="dot" style={{ background: c.color }} />{c.label} <span>{counts[c.key].toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="list">
+            {!ready && <p className="empty">Loading…</p>}
+            {ready && top.length === 0 && <p className="empty">Nothing here.</p>}
+            {top.map((r) => {
+              const hex = r.claimedBy?.toHexString();
+              return (
+                <Row
+                  key={r.id.toString()}
+                  r={r}
+                  now={now}
+                  mine={!!hex && hex === me}
+                  claimer={hex ? names.get(hex) ?? 'A responder' : ''}
+                  fresh={freshIds.has(r.id.toString())}
+                  selected={selectedReq?.id === r.id}
+                  onOpen={setSelected}
+                  onClaim={onClaim}
+                  onRelease={onRelease}
+                  onResolve={onResolve}
+                />
+              );
+            })}
+            {shownTotal > MAX_ROWS && <p className="empty">Showing the top {MAX_ROWS} of {shownTotal.toLocaleString()}.</p>}
+          </div>
+        </section>
+
+        <div className="side">
+          <section className="card mapcard">
+            <div className="mapnote">Impact zone · {total.toLocaleString()} households · positions simulated</div>
+            <ImpactMap dots={dots} selectedId={selectedReq?.id} onPick={setSelected} />
+          </section>
+          {selectedReq && (
+            <Detail
+              r={selectedReq}
               now={now}
-              mine={!!hex && hex === me}
-              claimer={hex ? names.get(hex) ?? 'a responder' : ''}
-              fresh={freshIds.has(r.id.toString())}
-              onOpen={setSelected}
+              mine={!!selectedReq.claimedBy && selectedReq.claimedBy.toHexString() === me}
               onClaim={onClaim}
               onRelease={onRelease}
               onResolve={onResolve}
             />
-          );
-        })}
-        {total > MAX_ROWS && <p className="empty">Showing the top {MAX_ROWS} of {total} open requests.</p>}
-      </main>
+          )}
+        </div>
+      </div>
 
-      {selectedReq && <Drawer r={selectedReq} now={now} onClose={() => setSelected(null)} />}
+      {confirmReset && (
+        <div className="modal" onClick={() => !resetting && setConfirmReset(false)}>
+          <div className="modalbox" onClick={(e) => e.stopPropagation()}>
+            <h2>Reset the demo?</h2>
+            <p className="meta">
+              This deletes every request, check-in and call in the SHARED database, for everyone on the team.
+              Only continue if the whole team agreed.
+            </p>
+            <div className="actions">
+              <button className="btn big" disabled={resetting} onClick={() => setConfirmReset(false)}>Cancel</button>
+              <button className="btn big danger solid" disabled={resetting} onClick={doReset}>
+                {resetting ? 'Resetting…' : 'Yes, reset for everyone'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Count({ label, n, cls = '' }: { label: string; n: number; cls?: string }) {
-  return (
-    <div className={`count ${cls}`}>
-      <span className="n">{n.toLocaleString()}</span>
-      <span className="l">{label}</span>
-    </div>
-  );
-}
-
-function Drawer({ r, now, onClose }: { r: Request; now: number; onClose: () => void }) {
+function Detail({ r, now, mine, onClaim, onRelease, onResolve }: {
+  r: Request; now: number; mine: boolean;
+  onClaim: (id: bigint) => void; onRelease: (id: bigint) => void; onResolve: (id: bigint) => void;
+}) {
   const [outbox] = useTable(tables.outbox);
   const [calls] = useTable(tables.call);
+  const person = useMemo(() => personFor(r), [r.id, r.victimHandle, r.rawText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const history = useMemo(() => {
     const items = [
@@ -202,26 +311,48 @@ function Drawer({ r, now, onClose }: { r: Request; now: number; onClose: () => v
   }, [outbox, calls, r.id]);
 
   const facts = useMemo(() => parseJson<unknown>(r.facts, r.facts), [r.facts]);
+  const reasons = parseReasons(r.reasons);
+  const quotes = parseQuotes(r.facts);
+  const claimed = !!r.claimedBy;
 
   return (
-    <aside className="drawer">
-      <div className="drawerhead">
-        <h2>Request #{r.id.toString()}</h2>
-        <button className="btn" onClick={onClose}>Close</button>
+    <aside className="card detail">
+      <div className="dhead">
+        <div>
+          <h2>{person.name}</h2>
+          <div className="meta">
+            {person.age ? `Age ${person.age} · ` : ''}{person.address ?? r.victimHandle}
+          </div>
+          {person.policy && <div className="meta">{person.policy} policy · {person.policyNo}</div>}
+        </div>
+        <div className="urgency">
+          <span className={`big tier-${r.tier}`}>{r.score}</span>
+          <span className="l">Urgency</span>
+        </div>
       </div>
-      <p className="meta">
-        {r.platform} · {r.victimHandle} · {STATE_LABEL[r.state] ?? r.state} · open {mmss(now - tsMs(r.createdAt))}
-        <br />
-        check-ins sent {r.checkinsSent} · calls placed {r.callsPlaced} · facts {r.factsStatus}
-        <br />
-        base {r.baseScore} + escalation {r.escalation} = score {r.score}
-      </p>
-      <h3>Message</h3>
-      <div className="text"><Highlighted text={r.rawText} quotes={parseQuotes(r.facts)} /></div>
-      <h3>Facts</h3>
-      <pre>{JSON.stringify(facts, null, 2)}</pre>
-      <h3>Check-in history</h3>
-      {history.length === 0 && <p className="empty">Nothing sent yet.</p>}
+
+      <div className="why">
+        <div className="whyl">Why this ranking</div>
+        <div>
+          {person.issue}
+          {quotes.length > 0 && <> — said “{quotes.join('”, “')}”</>}. Base {r.baseScore} + {r.escalation} for waiting unclaimed = {r.score}.
+        </div>
+        {reasons.length > 0 && <div className="reasons">{reasons.map((x, i) => <span key={i} className="reason">{x}</span>)}</div>}
+      </div>
+
+      <div className="bubble">
+        <Highlighted text={r.rawText} quotes={quotes} />
+      </div>
+      <div className="stamp">Resident · {new Date(tsMs(r.createdAt)).toLocaleTimeString()} · open {mmss(now - tsMs(r.createdAt))}</div>
+
+      <div className="dactions">
+        {!claimed && r.state !== 'closed' && <button className="btn big primary" onClick={() => onClaim(r.id)}>Claim</button>}
+        {mine && <button className="btn big" onClick={() => onRelease(r.id)}>Release</button>}
+        {r.state !== 'closed' && <button className="btn big" onClick={() => onResolve(r.id)}>Resolve</button>}
+      </div>
+
+      <h3>Check-ins · {r.checkinsSent} texts · {r.callsPlaced} calls</h3>
+      {history.length === 0 && <p className="empty left">Nothing sent yet.</p>}
       <ul className="history">
         {history.map((h, i) => (
           <li key={i}>
@@ -230,6 +361,11 @@ function Drawer({ r, now, onClose }: { r: Request; now: number; onClose: () => v
           </li>
         ))}
       </ul>
+
+      <details>
+        <summary>Facts ({r.factsStatus})</summary>
+        <pre>{JSON.stringify(facts, null, 2)}</pre>
+      </details>
     </aside>
   );
 }
