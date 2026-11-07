@@ -1,0 +1,23 @@
+{
+  "name": "nobody-missed-bridge",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Thin Node process: Photon events in, outbox drained out. Decides nothing (SPEC §7).",
+  "scripts": {
+    "start": "tsx --env-file-if-exists=.env src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "spacetimedb": "2.14.*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.6.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
