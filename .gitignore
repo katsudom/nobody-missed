@@ -8,3 +8,5 @@ dist
 .spacetimedb-token
 spacetime.local.json
 *.tsbuildinfo
+!.env.development
+!.env.production
