@@ -4,7 +4,7 @@
 
 > "Everyone ranks requests. We chase the people who stop answering."
 
-**Live board:** https://katsudom.github.io/nobody-missed/ · **Teammates start here:** [TEAMMATES.md](TEAMMATES.md)
+**Live board:** https://nobody-missed.vercel.app · **Teammates start here:** [TEAMMATES.md](TEAMMATES.md)
 
 HackUTD 2026 · State Farm "The Worst Day, at Scale" · Spacetime · Photon. Full spec: [SPEC.md](SPEC.md).
 

@@ -1,7 +1,7 @@
 # Teammate guide (front end)
 
-The live website: **https://katsudom.github.io/nobody-missed/**
-It updates by itself about 1 minute after anything is pushed to `main`.
+The live website: **https://nobody-missed.vercel.app**
+It updates by itself about 1 minute after anything is pushed to `main`. Every pull request also gets its own preview link (Vercel posts it on the PR).
 
 ## One-time setup (about 10 minutes)
 
