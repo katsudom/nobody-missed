@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRun, useToast } from './lib';
+import { HOLDERS, ISSUES } from './policyholders';
 
 export default function VictimSim() {
   const run = useRun();
@@ -31,6 +32,19 @@ export default function VictimSim() {
     <div className="sim">
       <h1>Victim simulator</h1>
       <p className="meta">Dev only. Acts as a victim texting the line. Typed messages stay “new” until the bridge is running.</p>
+      <label>Fake policyholder (fills handle and message)</label>
+      <select
+        defaultValue=""
+        onChange={(e) => {
+          const h = HOLDERS.find((x) => x.handle === e.target.value);
+          if (h) { setHandle(h.handle); setText(h.text); }
+        }}
+      >
+        <option value="">Pick one…</option>
+        {HOLDERS.map((h) => (
+          <option key={h.handle} value={h.handle}>{h.name} · {ISSUES.find((i) => i.key === h.issue)?.label}</option>
+        ))}
+      </select>
       <label>Victim handle (phone or email)</label>
       <input value={handle} onChange={(e) => setHandle(e.target.value)} />
       <label>Message</label>

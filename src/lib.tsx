@@ -3,15 +3,15 @@ import { useSpacetimeDB } from 'spacetimedb/react';
 import type { DbConnection } from './module_bindings';
 
 // ---------- Toasts ----------
-type Toast = { id: number; text: string };
-const ToastCtx = createContext<(text: string) => void>(() => {});
+type Toast = { id: number; text: string; ok: boolean };
+const ToastCtx = createContext<(text: string, ok?: boolean) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = useCallback((text: string) => {
+  const push = useCallback((text: string, ok = false) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, text }]);
+    setToasts((t) => [...t, { id, text, ok }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
   }, []);
   return (
@@ -19,7 +19,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="toasts">
         {toasts.map((t) => (
-          <div key={t.id} className="toast">{t.text}</div>
+          <div key={t.id} className={`toast ${t.ok ? 'ok' : ''}`}>{t.text}</div>
         ))}
       </div>
     </ToastCtx.Provider>

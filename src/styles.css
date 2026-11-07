@@ -30,13 +30,13 @@ h2 { margin: 0; font-size: 24px; }
 .btn.claim:hover { background: #f23a4a; }
 .btn.danger { border-color: #7f2530; color: #ff8a95; background: transparent; }
 
-.cols { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr); gap: 18px; align-items: start; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(400px, 1fr); gap: 18px; align-items: start; }
 .queue h2 { margin-bottom: 12px; }
 .list { display: flex; flex-direction: column; }
 .empty { color: var(--muted); text-align: center; }
 .empty.left { text-align: left; margin: 4px 0; }
 
-.row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 70px 44px auto; align-items: center; gap: 14px; padding: 14px 10px; border-top: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 120px 70px 44px auto; align-items: center; gap: 14px; padding: 14px 10px; border-top: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
 .row:first-child { border-top: 0; }
 .row:hover { background: #1c1c1f; }
 .row.selected { outline: 2px solid var(--red); outline-offset: -2px; border-color: transparent; }
@@ -66,7 +66,8 @@ mark { background: #f5c518; color: #111; border-radius: 4px; padding: 0 3px; }
 .state-flagged { background: var(--red); color: #fff; }
 .state-claimed { background: #123524; color: var(--green); }
 
-.detail { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.side { display: flex; flex-direction: column; gap: 18px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.detail { flex: none; }
 .dhead { display: flex; justify-content: space-between; gap: 16px; }
 .meta { color: var(--muted); font-size: 14px; margin-top: 4px; }
 .urgency { display: flex; flex-direction: column; align-items: flex-end; }
@@ -89,6 +90,7 @@ pre { background: var(--bg); padding: 12px; border-radius: 10px; font-size: 14px
 .modal { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: #000c; }
 .modalbox { display: flex; flex-direction: column; gap: 18px; width: 520px; padding: 32px; background: var(--card); border: 1px solid #3a3a40; border-radius: 16px; }
 
+select { font: inherit; font-size: 20px; padding: 12px 14px; border-radius: 10px; border: 1px solid #3a3a40; background: var(--bg); color: var(--text); width: 100%; }
 input, textarea { font: inherit; font-size: 22px; padding: 12px 14px; border-radius: 10px; border: 1px solid #3a3a40; background: var(--bg); color: var(--text); width: 100%; }
 .sim { max-width: 800px; margin: 40px auto; display: flex; flex-direction: column; gap: 10px; padding: 0 20px; }
 .sim h1 { font-size: 34px; }
@@ -98,8 +100,52 @@ input, textarea { font: inherit; font-size: 22px; padding: 12px 14px; border-rad
 /* Narrower windows: drop the side panel under the queue and simplify rows. */
 @media (max-width: 1200px) {
   .cols { grid-template-columns: 1fr; }
-  .detail { position: static; max-height: none; }
+  .side { position: static; max-height: none; }
   .row { grid-template-columns: 150px minmax(0, 1fr) 44px; }
+  .row .timer { display: none; }
   .row .actions { grid-column: 2 / -1; justify-content: flex-start; }
   .row .bar { display: none; }
 }
+
+/* ---- command-center additions ---- */
+.simtag { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+.sumtop { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.pct { font-size: 44px; font-weight: 800; margin-left: 10px; }
+.stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; margin: 12px 0; background: #26262a; }
+.stack i { display: block; min-width: 3px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 28px; font-size: 20px; font-weight: 700; }
+.legend em { font-style: normal; font-weight: 400; color: var(--muted); font-size: 16px; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+.summary { display: block; }
+
+.qhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.qhead h2 { margin: 0; }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tab { font: inherit; font-size: 15px; display: inline-flex; align-items: center; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
+.tab span { font-family: ui-monospace, Consolas, monospace; color: var(--muted); margin-left: 8px; font-size: 13px; }
+.tab .dot { margin-right: 6px; width: 8px; height: 8px; }
+.tab.on { background: #26262a; border-color: #4a4a52; }
+
+.name { font-weight: 800; font-size: 21px; }
+.row .text { color: #cfcfd6; font-size: 17px; }
+.issue { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; background: #232329; color: #d0d0d8; }
+.onway { color: var(--muted); font-size: 15px; }
+.btn.outline { background: transparent; border: 1.5px solid var(--red); color: #ff8a95; }
+.btn.outline:hover { background: #3a1217; }
+.btn.primary { background: #e11d2e; border-color: #e11d2e; }
+.btn.primary:hover { background: #f23a4a; }
+.btn.solid { background: #e11d2e; border-color: #e11d2e; color: #fff; }
+.btn:disabled { opacity: .5; cursor: default; }
+.toast.ok { background: #168a56; }
+
+.mapcard { padding: 14px; }
+.mapnote { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.map { display: block; width: 100%; height: auto; border-radius: 10px; background: #101013; }
+
+.bubble { margin: 16px 0 4px auto; max-width: 92%; padding: 12px 16px; border-radius: 14px; background: #2a1216; font-size: 20px; }
+.stamp { text-align: right; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); }
+.dactions { display: flex; gap: 10px; margin-top: 16px; }
+.dactions .btn { flex: 1; }
+details { margin-top: 16px; }
+summary { cursor: pointer; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
+.modalbox .actions { justify-content: flex-end; }
