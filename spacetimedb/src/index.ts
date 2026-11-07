@@ -390,7 +390,11 @@ export const injectLoad = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
   }
 });
 
+// Dominic's `spacetime login` identity. Only this identity (his terminal) can reset the shared database.
+const OWNER_HEX = 'c200283d09f118ee9b0b658fa4929b296cd5c10374ffb52e3766cf6d1cd76588';
+
 export const resetDemo = spacetimedb.reducer((ctx) => {
+  if (ctx.sender.toHexString() !== OWNER_HEX) throw new SenderError('Reset is locked (ask Dominic)');
   for (const r of [...ctx.db.request.iter()]) ctx.db.request.id.delete(r.id);
   for (const o of [...ctx.db.outbox.iter()]) ctx.db.outbox.id.delete(o.id);
   for (const c of [...ctx.db.call.iter()]) ctx.db.call.id.delete(c.id);
