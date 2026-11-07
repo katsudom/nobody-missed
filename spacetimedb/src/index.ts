@@ -368,7 +368,11 @@ const SAMPLES: { text: string; facts: object }[] = [
   { text: 'Just checking if shelters are open', facts: { quotes: [] } },
 ];
 
+// Parked until the team is ready for the load demo (SPEC §2 step 4). Flip to true and republish.
+const INJECT_ENABLED = false;
+
 export const injectLoad = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
+  if (!INJECT_ENABLED) throw new SenderError('Inject is parked for now (ask Dominic)');
   const count = Math.min(n, 5000);
   for (let i = 0; i < count; i++) {
     const s = SAMPLES[ctx.random.integerInRange(0, SAMPLES.length - 1)];
