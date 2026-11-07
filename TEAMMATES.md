@@ -1,7 +1,16 @@
 # Teammate guide (front end)
 
-The live website: **https://katsudom.github.io/nobody-missed/**
-It updates by itself about 1 minute after anything is pushed to `main`.
+The live website: **https://nobody-missed.vercel.app**
+It updates by itself about 1 minute after anything is pushed to `main`. Every pull request also gets its own preview link (Vercel posts it on the PR).
+
+## Who owns what
+
+- **Dorothy:** the case list (rows, red rows, Claim/Release/Resolve) in `src/Board.tsx`
+- **Kevin:** top bar, name prompt, side panel
+- **Will:** `/victim-sim` page (`src/VictimSim.tsx`), pitch, sponsor questions
+- **Dominic:** `spacetimedb/`, `bridge/`, keys, texts and calls
+
+Only change your own area. Inject 2,000 and Reset are locked to Dominic.
 
 ## One-time setup (about 10 minutes)
 

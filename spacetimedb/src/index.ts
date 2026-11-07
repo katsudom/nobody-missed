@@ -368,7 +368,11 @@ const SAMPLES: { text: string; facts: object }[] = [
   { text: 'Just checking if shelters are open', facts: { quotes: [] } },
 ];
 
+// Parked until the team is ready for the load demo (SPEC §2 step 4). Flip to true and republish.
+const INJECT_ENABLED = false;
+
 export const injectLoad = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
+  if (!INJECT_ENABLED) throw new SenderError('Inject is parked for now (ask Dominic)');
   const count = Math.min(n, 5000);
   for (let i = 0; i < count; i++) {
     const s = SAMPLES[ctx.random.integerInRange(0, SAMPLES.length - 1)];
@@ -386,7 +390,11 @@ export const injectLoad = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
   }
 });
 
+// Dominic's `spacetime login` identity. Only this identity (his terminal) can reset the shared database.
+const OWNER_HEX = 'c200283d09f118ee9b0b658fa4929b296cd5c10374ffb52e3766cf6d1cd76588';
+
 export const resetDemo = spacetimedb.reducer((ctx) => {
+  if (ctx.sender.toHexString() !== OWNER_HEX) throw new SenderError('Reset is locked (ask Dominic)');
   for (const r of [...ctx.db.request.iter()]) ctx.db.request.id.delete(r.id);
   for (const o of [...ctx.db.outbox.iter()]) ctx.db.outbox.id.delete(o.id);
   for (const c of [...ctx.db.call.iter()]) ctx.db.call.id.delete(c.id);
