@@ -1,9 +1,20 @@
 import { useState } from 'react';
+import { useSpacetimeDB, useTable } from 'spacetimedb/react';
+import { tables } from './module_bindings';
 
-// Small floating dev panel (bottom-right). Keeps demo-only controls off the main board.
-// The server locks both actions to Dominic's terminal, so for everyone else they show an error.
+// Small floating dev panel (bottom-right). Only admins see it; the server also refuses
+// Inject and Reset from anyone who isn't an admin.
+// To become an admin: open the site with ?dev (e.g. /?dev#/board), copy your id, and have
+// Dominic run:  spacetime call nobody-missed make_admin '"<id>"' --server maincloud
 export default function DevTools({ onInject, onAskReset }: { onInject: () => void; onAskReset: () => void }) {
+  const { identity } = useSpacetimeDB();
+  const [admins] = useTable(tables.admin);
   const [open, setOpen] = useState(false);
+
+  const me = identity?.toHexString() ?? '';
+  const isAdmin = !!me && admins.some((a) => a.identityHex === me);
+  const askedForDev = new URLSearchParams(window.location.search).has('dev');
+  if (!isAdmin && !askedForDev) return null;
 
   if (!open) {
     return (
@@ -19,9 +30,18 @@ export default function DevTools({ onInject, onAskReset }: { onInject: () => voi
         <strong>Dev tools</strong>
         <button className="devx" onClick={() => setOpen(false)} aria-label="Close dev tools">×</button>
       </div>
-      <p className="meta">Shared database. Locked to Dominic for now.</p>
-      <button className="btn" onClick={onInject}>Inject 2,000</button>
-      <button className="btn danger" onClick={onAskReset}>Reset demo</button>
+      {isAdmin ? (
+        <>
+          <p className="meta">Shared database: affects everyone.</p>
+          <button className="btn" onClick={onInject}>Inject 2,000</button>
+          <button className="btn danger" onClick={onAskReset}>Reset demo</button>
+        </>
+      ) : (
+        <>
+          <p className="meta">Not an admin. Send Dominic this id:</p>
+          <code className="devid">{me || 'connecting…'}</code>
+        </>
+      )}
     </div>
   );
 }
