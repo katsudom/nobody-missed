@@ -1,0 +1,76 @@
+/* Case detail pieces (ladder, facts, check-in log) for the board's side panel.
+   Uses the board's tokens from styles.css (--red, --amber, --green, --line, --muted, --text, --bg).
+   Every colour is paired with text or an icon, so nothing relies on colour alone. */
+.dc-muted { color: var(--muted); font-size: 15px; margin: 4px 0; }
+.dc-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* ---------- Escalation ladder: Text → Call → Welfare check ---------- */
+.dc-ladder { margin-top: 16px; }
+.dc-ladder ol { list-style: none; margin: 0; padding: 0; display: flex; }
+.dc-step { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.dc-step__wire { position: absolute; top: 20px; right: 50%; width: 100%; height: 3px; background: var(--line); }
+.dc-step.is-done .dc-step__wire, .dc-step.is-active .dc-step__wire { background: var(--amber); animation: dc-fill 600ms ease-out both; }
+@keyframes dc-fill { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.dc-step__node {
+  position: relative; z-index: 1; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%;
+  font-size: 18px; color: var(--muted); background: var(--bg); border: 2px solid var(--line);
+  transition: background .3s, border-color .3s, color .3s;
+}
+.dc-step__label { font: 700 12px/1.2 ui-monospace, Consolas, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.dc-step.is-done .dc-step__node { background: #3a2a0c; border-color: var(--amber); color: var(--amber); }
+.dc-step.is-done .dc-step__label { color: var(--text); }
+.dc-step.is-active .dc-step__node { border-color: var(--amber); color: var(--amber); animation: dc-ring 1.6s ease-out infinite; }
+@keyframes dc-ring { 0% { box-shadow: 0 0 0 0 #f5a52499; } 100% { box-shadow: 0 0 0 14px transparent; } }
+.dc-step.is-alert .dc-step__node { background: var(--red); border-color: var(--red); color: #fff; }
+.dc-step.is-alert .dc-step__wire { background: var(--red); }
+.dc-step.is-alert.is-active .dc-step__node { animation-name: dc-ring-red; }
+.dc-step.is-alert .dc-step__label { color: var(--red); }
+@keyframes dc-ring-red { 0% { box-shadow: 0 0 0 0 #ff4d5ecc; } 100% { box-shadow: 0 0 0 16px transparent; } }
+.dc-ladder.is-stopped .dc-step { opacity: .45; }
+.dc-ladder__caption {
+  margin: 12px 0 0; padding: 8px 12px; border-radius: 8px;
+  font: 600 14px/1.3 ui-monospace, Consolas, monospace;
+  color: var(--amber); background: #3a2a0c66; border-left: 3px solid var(--amber);
+}
+.dc-ladder.is-flagged .dc-ladder__caption { color: #ffd0d5; background: #2a1216; border-left-color: var(--red); animation: dc-alarm 2s ease-in-out infinite; }
+@keyframes dc-alarm { 50% { background: #4a141c; } }
+.dc-ladder.is-stopped .dc-ladder__caption { color: var(--green); background: #12352466; border-left-color: var(--green); }
+
+/* ---------- Facts ---------- */
+.dc-readouts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
+.dc-readouts > div { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.dc-readouts dt { font: 700 11px/1 ui-monospace, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.dc-readouts dd { margin: 6px 0 0; font: 700 20px/1.2 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+.dc-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.dc-tag { font-size: 16px; font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 1px solid; }
+.dc-tag.is-medical { color: #9fd3ff; border-color: #2b5d8a; background: #0f2236; }
+.dc-tag.is-hazard { color: #ffcf8a; border-color: #8a5a1a; background: #2a1a06; }
+
+/* ---------- Check-in log ---------- */
+.dc-log { list-style: none; margin: 0; padding: 0; position: relative; }
+.dc-log::before { content: ''; position: absolute; left: 91px; top: 6px; bottom: 6px; width: 1px; background: var(--line); }
+.dc-log__item { position: relative; display: grid; grid-template-columns: 72px 38px 1fr; align-items: start; padding: 9px 0; border-radius: 8px; animation: dc-row-in 300ms ease-out both; }
+.dc-log__item time { font: 13px/1 ui-monospace, Consolas, monospace; color: var(--muted); padding-top: 6px; font-variant-numeric: tabular-nums; }
+.dc-log__icon {
+  position: relative; z-index: 1; display: grid; place-items: center; width: 26px; height: 26px; margin-left: 6px;
+  border-radius: 50%; font-size: 13px; background: var(--card, #161618); border: 1px solid var(--line); color: var(--muted);
+}
+.dc-log__head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dc-log__head b { font-size: 16px; }
+.dc-log__detail { margin-top: 3px; font-size: 14px; color: #b4b4be; overflow-wrap: anywhere; }
+.dc-pill { font: 700 11px/1 ui-monospace, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; background: #26262a; color: var(--grey, #9a9aa3); }
+.tone-ok .dc-pill { background: #123524; color: var(--green); }
+.tone-ok .dc-log__icon { border-color: var(--green); color: var(--green); }
+.tone-bad .dc-pill { background: #3a1217; color: #ff8a95; }
+.tone-bad .dc-log__icon { border-color: var(--red); color: var(--red); }
+.tone-pending .dc-pill { background: #3a2a0c; color: var(--amber); }
+.tone-pending .dc-log__icon { border-color: var(--amber); color: var(--amber); }
+.tone-muted { opacity: .55; }
+@keyframes dc-row-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.dc-log__item.is-fresh { animation: dc-row-in 300ms ease-out both, dc-flash 1.8s ease-out; }
+@keyframes dc-flash { 0%, 30% { background: #f5a52426; } 100% { background: transparent; } }
+
+/* Motion off for people who ask for it: keep colours, drop movement. */
+@media (prefers-reduced-motion: reduce) {
+  .dc-ladder *, .dc-ladder, .dc-log * { animation: none !important; transition: none !important; }
+}

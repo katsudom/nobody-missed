@@ -5,10 +5,11 @@ import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
 import RequestRow from './module_bindings/request_table';
 import {
-  Highlighted, mmss, parseJson, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
+  Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
 } from './lib';
 import { personFor } from './policyholders';
 import ImpactMap from './ImpactMap';
+import { CaseFacts, CheckinLog, EscalationLadder } from './board/Drawer';
 
 type Request = Infer<typeof RequestRow>;
 const MAX_ROWS = 200;
@@ -289,29 +290,7 @@ function Detail({ r, now, mine, onClaim, onRelease, onResolve }: {
   r: Request; now: number; mine: boolean;
   onClaim: (id: bigint) => void; onRelease: (id: bigint) => void; onResolve: (id: bigint) => void;
 }) {
-  const [outbox] = useTable(tables.outbox);
-  const [calls] = useTable(tables.call);
   const person = useMemo(() => personFor(r), [r.id, r.victimHandle, r.rawText]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const history = useMemo(() => {
-    const items = [
-      ...outbox.filter((o) => o.requestId === r.id).map((o) => ({
-        at: tsMs(o.createdAt),
-        label: o.kind.replace(/_/g, ' '),
-        detail: o.status,
-        extra: o.payload,
-      })),
-      ...calls.filter((c) => c.requestId === r.id).map((c) => ({
-        at: tsMs(c.createdAt),
-        label: 'call',
-        detail: c.result + (c.dtmf ? ` (pressed ${c.dtmf})` : ''),
-        extra: c.externalId,
-      })),
-    ];
-    return items.sort((a, b) => a.at - b.at);
-  }, [outbox, calls, r.id]);
-
-  const facts = useMemo(() => parseJson<unknown>(r.facts, r.facts), [r.facts]);
   const reasons = parseReasons(r.reasons);
   const quotes = parseQuotes(r.facts);
   const claimed = !!r.claimedBy;
@@ -331,6 +310,8 @@ function Detail({ r, now, mine, onClaim, onRelease, onResolve }: {
           <span className="l">Urgency</span>
         </div>
       </div>
+
+      <EscalationLadder r={r} />
 
       <div className="why">
         <div className="whyl">Why this ranking</div>
@@ -353,20 +334,10 @@ function Detail({ r, now, mine, onClaim, onRelease, onResolve }: {
       </div>
 
       <h3>Check-ins · {r.checkinsSent} texts · {r.callsPlaced} calls</h3>
-      {history.length === 0 && <p className="empty left">Nothing sent yet.</p>}
-      <ul className="history">
-        {history.map((h, i) => (
-          <li key={i}>
-            <b>{new Date(h.at).toLocaleTimeString()}</b> {h.label} — {h.detail}
-            <div className="extra">{h.extra}</div>
-          </li>
-        ))}
-      </ul>
+      <CheckinLog key={r.id.toString()} r={r} />
 
-      <details>
-        <summary>Facts ({r.factsStatus})</summary>
-        <pre>{JSON.stringify(facts, null, 2)}</pre>
-      </details>
+      <h3>Facts</h3>
+      <CaseFacts r={r} />
     </aside>
   );
 }
