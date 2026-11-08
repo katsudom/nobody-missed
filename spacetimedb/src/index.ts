@@ -978,11 +978,17 @@ function routeHouseholdMessage(
     applyCheckinReply(ctx, waiting, m.rawText);
     return true;
   }
-  if (/^\s*join\s*$/i.test(m.rawText)) {
-    if (!h) {
+  // "JOIN" signs the phone up; "JOIN Dorothy" also sets the name the board shows (texting it again renames).
+  // Only a short name counts, so a real report that happens to start with "join" is not swallowed.
+  const join = /^\s*join(?:\s+([a-z][a-z'.-]*(?:\s+[a-z][a-z'.-]*){0,2}))?\s*$/i.exec(m.rawText);
+  if (join) {
+    const name = (join[1] ?? '').replace(/\s+/g, ' ').slice(0, 40);
+    if (h) {
+      if (name) ctx.db.household.id.update({ ...ctx.db.household.id.find(h.id)!, name });
+    } else {
       ctx.db.household.insert({
         id: 0n,
-        name: m.victimHandle,
+        name: name || m.victimHandle,
         handle: m.victimHandle,
         platform: m.platform,
         spaceId: m.spaceId,
