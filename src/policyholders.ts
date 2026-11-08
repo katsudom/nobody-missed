@@ -66,7 +66,11 @@ function hash(s: string) {
 
 export type Person = { name: string; age?: number; address?: string; policy?: string; policyNo?: string; issue: string };
 
-type HouseholdLike = { name: string; age: number; address: string; city: string; policy: string; handle: string };
+type HouseholdLike = { name: string; age: number; address: string; city: string; policy: string; handle: string; real?: boolean };
+
+/** Hides a real phone number on screen, keeping the last 4 digits. Text without a phone number is unchanged. */
+export const maskPhone = (s: string) =>
+  s.replace(/\+?\d[\d\s().-]{6,}\d/g, (m) => `•••-•••-${m.replace(/\D/g, '').slice(-4)}`);
 
 // A household from the database wins (storm check-ins), so both boards show the same person.
 // Otherwise: a real handle match, else a stable fake policyholder whose issue fits the text.
@@ -74,9 +78,9 @@ export function personFor(r: { id: bigint; victimHandle: string; rawText: string
   const issue = issueFor(r.rawText);
   if (household) {
     return {
-      name: household.name,
+      name: maskPhone(household.name),
       age: household.age || undefined,
-      address: `${household.address}, ${household.city}`,
+      address: `${household.real ? maskPhone(household.handle) : household.address}, ${household.city}`,
       policy: household.policy,
       policyNo: `SF-${String(1000000 + (hash(household.handle) % 9000000))}`,
       issue: issue.label,
@@ -85,7 +89,7 @@ export function personFor(r: { id: bigint; victimHandle: string; rawText: string
   let h = byHandle.get(r.victimHandle);
   if (!h) {
     const pool = HOLDERS.filter((x) => x.issue === issue.key);
-    if (pool.length === 0) return { name: r.victimHandle, issue: issue.label };
+    if (pool.length === 0) return { name: maskPhone(r.victimHandle), issue: issue.label };
     h = pool[hash(`${r.victimHandle}:${r.id}`) % pool.length];
   }
   const policyNo = `SF-${String(1000000 + (hash(h.handle) % 9000000))}`;
