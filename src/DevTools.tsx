@@ -145,7 +145,7 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
 
             {shownTab === 'team' && (
               <>
-                <Section label="Team phones" note="Phones join by texting JOIN to the Photon number.">
+                <Section label="Team phones" note="Phones join by texting JOIN and their name (JOIN Dorothy) to the Photon number. Texting it again renames.">
                   <p className="devstat"><b>{joined}</b> joined now</p>
                 </Section>
                 <Section label="Phone calls" note={isAdmin ? 'Calls turn off by themselves when a storm ends.' : 'Only Dominic can turn calls on.'}>
