@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSpacetimeDB } from 'spacetimedb/react';
 import Board from './Board';
 import CheckinBoard from './CheckinBoard';
+import MovingBackground from './MovingBackground';
 import VictimSim from './VictimSim';
 import { ToastProvider, useRun } from './lib';
 import './styles.css';
@@ -77,6 +78,7 @@ function Shell() {
 export default function App() {
   return (
     <ToastProvider>
+      <MovingBackground />
       <Shell />
     </ToastProvider>
   );
