@@ -8,6 +8,7 @@ import { useTable } from 'spacetimedb/react';
 import type { Infer } from 'spacetimedb';
 import { tables } from '../module_bindings';
 import RequestRow from '../module_bindings/request_table';
+import { maskHandle } from '../policyholders';
 import './Drawer.css';
 
 type Request = Infer<typeof RequestRow>;
@@ -62,7 +63,7 @@ const clock = (micros: bigint) =>
 function outboxDetail(kind: string, payload: string): string {
   const p = parseJson<Record<string, unknown>>(payload, {});
   if (kind === 'send_text' && typeof p.text === 'string') return `“${p.text}”`;
-  if (typeof p.to === 'string' && p.to) return `→ ${p.to}`;
+  if (typeof p.to === 'string' && p.to) return `→ ${p.platform === 'sim' || p.platform === 'synthetic' ? p.to : maskHandle(p.to)}`;
   return '';
 }
 

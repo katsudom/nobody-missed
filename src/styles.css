@@ -148,3 +148,10 @@ input, textarea { font: inherit; font-size: 22px; padding: 12px 14px; border-rad
 @media (prefers-reduced-motion: reduce) {
   .irow.is-fresh { animation: none; }
 }
+
+/* Board mode (Dev tools): real phones only vs. fake data too */
+.simtag.is-real { color: var(--green); border-color: #1f5c40; }
+.devmode { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+.devmode__opt { font: inherit; font-size: 14px; font-weight: 700; padding: 7px 10px; border-radius: 7px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.devmode__opt.is-on { background: var(--raised); color: var(--text); }
+.devmode__opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }

@@ -7,12 +7,24 @@ import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
 import RequestRow from './module_bindings/request_table';
 import { Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
-import { personFor } from './policyholders';
+import { isRealText, maskHandle, personFor } from './policyholders';
 import ImpactMap from './ImpactMap';
 import { CaseFacts, CheckinLog, EscalationLadder } from './board/Drawer';
 
 type Request = Infer<typeof RequestRow>;
 const MAX_ROWS = 200;
+
+/** Board mode: only texts from teammates' real phones, or everything including fake/injected data. Per browser. */
+export type Mode = 'real' | 'all';
+const MODE_KEY = 'nobody-missed/board-mode';
+const readMode = (): Mode => {
+  try { return localStorage.getItem(MODE_KEY) === 'all' ? 'all' : 'real'; } catch { return 'real'; }
+};
+const FLASH_MS = 1600;
+
+/** What counts as "this case changed" for the flash. Not the score: escalation ticks it every second. */
+const sigOf = (r: Request) =>
+  `${r.state}|${r.claimedBy?.toHexString() ?? ''}|${r.checkinsSent}|${r.callsPlaced}|${r.lastVictimReplyAt.microsSinceUnixEpoch}|${r.factsStatus}`;
 
 type Cat = 'help' | 'waiting' | 'silent' | 'claimed' | 'safe';
 type Filter = 'open' | Cat;
@@ -112,7 +124,17 @@ export default function Board() {
   const run = useRun();
   const toast = useToast();
   const now = useNow();
-  const [requests, ready] = useTable(tables.request);
+  const [allRequests, ready] = useTable(tables.request);
+  const [mode, setModeState] = useState<Mode>(readMode);
+  const setMode = (m: Mode) => {
+    setModeState(m);
+    setSelected(null);
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* storage blocked: still works this session */ }
+  };
+  const requests = useMemo(
+    () => (mode === 'real' ? allRequests.filter(isRealText) : allRequests),
+    [allRequests, mode]
+  );
   const [responders] = useTable(tables.responder);
   const [selected, setSelected] = useState<bigint | null>(null);
   const [filter, setFilter] = useState<Filter>('open');
@@ -138,15 +160,21 @@ export default function Board() {
   }, [requests, filter]);
   const shownTotal = filter === 'open' ? open : counts[filter];
 
-  // Pulse only rows that arrive after the first full load.
-  const seen = useRef<Set<string> | null>(null);
-  const freshIds = new Set<string>();
+  // Flash a row when it arrives or changes (new text, check-in sent, reply, claim, closed), after the first full load.
+  const seen = useRef<Map<string, string> | null>(null);
+  const flashUntil = useRef(new Map<string, number>());
+  const t = Date.now();
   if (ready) {
-    if (seen.current === null) seen.current = new Set(requests.map((r) => r.id.toString()));
-    else for (const r of requests) {
+    if (seen.current === null) seen.current = new Map(allRequests.map((r) => [r.id.toString(), sigOf(r)]));
+    else for (const r of allRequests) {
       const k = r.id.toString();
-      if (!seen.current.has(k)) { seen.current.add(k); freshIds.add(k); }
+      const sig = sigOf(r);
+      if (seen.current.get(k) !== sig) { seen.current.set(k, sig); flashUntil.current.set(k, t + FLASH_MS); }
     }
+  }
+  const freshIds = new Set<string>();
+  for (const [k, until] of flashUntil.current) {
+    if (until > t) freshIds.add(k); else flashUntil.current.delete(k);
   }
 
   // The panel shows the clicked case, or the top-ranked one until you click.
@@ -214,7 +242,9 @@ export default function Board() {
           <span className="ibar__pct">{handled}%</span>
           <span className="ibar__pctl">claimed or safe</span>
         </div>
-        <span className="simtag">Simulated storm · synthetic policyholders</span>
+        <span className={`simtag${mode === 'real' ? ' is-real' : ''}`}>
+          {mode === 'real' ? 'Real phones only' : 'Includes fake data · synthetic policyholders'}
+        </span>
       </header>
 
       <nav className="filters" aria-label="Filter cases">
@@ -240,7 +270,11 @@ export default function Board() {
             <span className="ilist__keys"><kbd>↑</kbd><kbd>↓</kbd> to move</span>
           </div>
           {!ready && <p className="empty">Loading…</p>}
-          {ready && top.length === 0 && <p className="empty">No cases here.</p>}
+          {ready && top.length === 0 && (
+            <p className="empty">
+              {mode === 'real' && requests.length === 0 ? "No real texts yet. Text the Photon number from a teammate's iPhone." : 'No cases here.'}
+            </p>
+          )}
           <ol className="ilist__rows" ref={listRef}>
             {top.map((r) => {
               const hex = r.claimedBy?.toHexString();
@@ -285,7 +319,7 @@ export default function Board() {
         </main>
       </div>
 
-      <DevTools onInject={onInject} onAskReset={() => setConfirmReset(true)} />
+      <DevTools mode={mode} onMode={setMode} onInject={onInject} onAskReset={() => setConfirmReset(true)} />
 
       {confirmReset && (
         <div className="modal" onClick={() => !resetting && setConfirmReset(false)}>
@@ -354,7 +388,7 @@ function CasePanel({ r, now, mine, claimer, dots, onPick, onClaim, onRelease, on
 
       <div className="case__msg">
         <div className="bubble"><Highlighted text={r.rawText} quotes={quotes} /></div>
-        <div className="stamp">{r.platform} · {r.victimHandle} · {new Date(tsMs(r.createdAt)).toLocaleTimeString()}</div>
+        <div className="stamp">{r.platform} · {isRealText(r) ? maskHandle(r.victimHandle) : r.victimHandle} · {new Date(tsMs(r.createdAt)).toLocaleTimeString()}</div>
       </div>
 
       <div className="case__grid">
