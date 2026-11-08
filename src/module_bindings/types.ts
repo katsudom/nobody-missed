@@ -55,9 +55,6 @@ export const Household = __t.object("Household", {
   age: __t.u32(),
   policy: __t.string(),
   real: __t.bool(),
-  profile: __t.string(),
-  profileText: __t.string(),
-  profileStep: __t.string(),
 });
 export type Household = __Infer<typeof Household>;
 

@@ -19,14 +19,6 @@ import {
   AWAITING,
   STORM_RETEXT,
   STORM_TEXT,
-  PROFILE_QUESTION,
-  PROFILE_THANKS,
-  followUpText,
-  hasProfile,
-  isSkip,
-  mergeProfile,
-  parseProfile,
-  type Facts,
   checkinAfterCall,
   checkinAfterReply,
   decideCheckin,
@@ -148,10 +140,6 @@ const household = table(
     age: t.u32(),
     policy: t.string(),
     real: t.bool(),
-    // What we know before the storm (rules.ts Profile, JSON), asked once after JOIN. Fakes are seeded with one.
-    profile: t.string().default('{}'),
-    profileText: t.string().default(''), // their own words, kept even if Claude could not read them
-    profileStep: t.string().default(''), // "" none yet | "asked" waiting for their answer | "reading" Claude is reading it | "done"
   }
 );
 
@@ -281,21 +269,6 @@ function applyFacts(r: RequestRow, factsJson: string) {
   r.reasons = JSON.stringify(s.reasons);
 }
 
-/** Report facts plus what this phone's household has on file (rules.ts mergeProfile). Unknown phones: unchanged. */
-function withProfile(ctx: Ctx, handle: string, factsJson: string): string {
-  const h = [...ctx.db.household.handle.filter(handle)][0];
-  if (!h) return factsJson;
-  const p = parseProfile(h.profile);
-  if (!hasProfile(p) && !h.age) return factsJson;
-  return JSON.stringify(mergeProfile(parseFacts(factsJson), p, h.age));
-}
-
-/** A text to one household outside any report (JOIN replies, follow-ups). Sim and fake phones are only recorded. */
-function textHousehold(ctx: Ctx, h: HouseholdRow, text: string, requestId = 0n, checkinId = 0n) {
-  if (!h.real) return;
-  enqueue(ctx, requestId, 'send_text', { platform: h.platform, to: h.handle, spaceId: h.spaceId, senderId: h.photonSenderId, text }, checkinId);
-}
-
 // ---------- Lifecycle ----------
 export const init = spacetimedb.init((ctx) => {
   // Whoever first publishes this database owns it. Only they can open it as a sandbox (openSandbox).
@@ -382,7 +355,7 @@ export const setFacts = spacetimedb.reducer(
   { requestId: t.u64(), factsJson: t.string(), ok: t.bool() },
   (ctx, { requestId, factsJson, ok }) => {
     const r = getRequest(ctx, requestId);
-    applyFacts(r, withProfile(ctx, r.victimHandle, ok ? factsJson : '{}')); // failed extraction is ranked P2, never last: nobody is dropped
+    applyFacts(r, ok ? factsJson : '{}'); // failed extraction is ranked P2, never last: nobody is dropped
     r.factsStatus = ok ? 'done' : 'failed';
     if (!ok) r.reasons = JSON.stringify([UNREAD_REASON]);
     if (r.state === 'new') setState(ctx, r, 'waiting');
@@ -654,28 +627,7 @@ function helpMessage(ctx: Ctx, h: HouseholdRow): { text: string; facts: object }
   if (h.age > 0 && h.age <= 50) {
     options.push({ text: "We have a baby and the power is out, it's getting cold", facts: { age, children: true, hazards: ['no_power'], quotes: ['a baby', 'power is out'] } });
   }
-  // Someone on file with oxygen, insulin or a wheelchair usually writes about that first.
-  const on = parseProfile(h.profile).medical ?? [];
-  const fits = options.filter((o) => ((o.facts as Facts).medical ?? []).some((m) => on.includes(m)));
-  return pick(ctx, fits.length && ctx.random() < 0.8 ? fits : options);
-}
-
-/** A fake household's profile, in the words they would have texted after JOIN. */
-function fakeProfile(ctx: Ctx, age: number): { profile: string; profileText: string } {
-  const people = ctx.random.integerInRange(1, 5);
-  const medical: string[] = [];
-  const roll = ctx.random();
-  if (roll < 0.12) medical.push('oxygen');
-  else if (roll < 0.18) medical.push('dialysis');
-  else if (roll < 0.3) medical.push('insulin');
-  if ((age >= 70 && ctx.random() < 0.3) || ctx.random() < 0.05) medical.push('mobility');
-  const children = age <= 50 && people >= 3 && ctx.random() < 0.6;
-  const pets = ctx.random() < 0.4;
-  const words: Record<string, string> = { oxygen: 'I am on oxygen', dialysis: 'dialysis 3x a week', insulin: 'type 1, on insulin', mobility: 'I use a wheelchair' };
-  const parts = [people === 1 ? 'Just me' : `${people} of us`, ...medical.map((m) => words[m])];
-  if (children) parts.push('kids at home');
-  if (pets) parts.push('a dog');
-  return { profile: JSON.stringify({ people, medical, children, pets }), profileText: parts.join(', ') };
+  return pick(ctx, options);
 }
 
 function activeStorm(ctx: Ctx) {
@@ -725,17 +677,12 @@ function openReport(ctx: Ctx, c: CheckinRow, h: HouseholdRow, text: string) {
     rawText: text,
   });
   if (h.real) {
-    // Rank on what is on file right away (still "pending" until Claude reads their words), then ask the
-    // one follow-up question that fits this household.
-    applyFacts(r, withProfile(ctx, h.handle, '{}'));
-    save(ctx, r);
     enqueue(ctx, r.id, 'extract_facts', { text });
-    textHousehold(ctx, h, followUpText(parseProfile(h.profile)), r.id);
   } else {
     // Fake households "say" a message that fits them, with facts filled in so they rank.
     const s = helpMessage(ctx, h);
     r.rawText = s.text;
-    applyFacts(r, withProfile(ctx, h.handle, JSON.stringify(s.facts)));
+    applyFacts(r, JSON.stringify(s.facts));
     r.factsStatus = 'done';
     setState(ctx, r, 'waiting');
     save(ctx, r);
@@ -804,7 +751,6 @@ function seedFake(ctx: Ctx, n: number) {
   const count = Math.min(n, 5000);
   const start = Number(ctx.db.household.count());
   for (let i = 0; i < count; i++) {
-    const age = ctx.random.integerInRange(19, 94);
     ctx.db.household.insert({
       id: 0n,
       name: `${pick(ctx, FIRST)} ${pick(ctx, LAST)}`,
@@ -814,11 +760,9 @@ function seedFake(ctx: Ctx, n: number) {
       photonSenderId: '',
       address: `${ctx.random.integerInRange(100, 9999)} ${pick(ctx, STREETS)}`,
       city: STORM_AREA,
-      age,
+      age: ctx.random.integerInRange(19, 94),
       policy: pick(ctx, POLICIES),
       real: false,
-      ...fakeProfile(ctx, age),
-      profileStep: 'done',
     });
   }
 }
@@ -849,9 +793,6 @@ export const enrollHousehold = spacetimedb.reducer(
       age: 0,
       policy: 'Home',
       real: true,
-      profile: '{}',
-      profileText: '',
-      profileStep: '',
     });
   }
 );
@@ -1054,12 +995,9 @@ function routeHouseholdMessage(
   if (join) {
     const name = (join[1] ?? '').replace(/\s+/g, ' ').slice(0, 40);
     if (h) {
-      const cur = ctx.db.household.id.find(h.id)!;
-      const ask = cur.profileStep === '' || cur.profileStep === 'asked'; // never answered: ask again
-      ctx.db.household.id.update({ ...cur, name: name || cur.name, profileStep: ask ? 'asked' : cur.profileStep });
-      if (ask) textHousehold(ctx, cur, PROFILE_QUESTION);
+      if (name) ctx.db.household.id.update({ ...ctx.db.household.id.find(h.id)!, name });
     } else {
-      const added = ctx.db.household.insert({
+      ctx.db.household.insert({
         id: 0n,
         name: name || m.victimHandle,
         handle: m.victimHandle,
@@ -1071,62 +1009,9 @@ function routeHouseholdMessage(
         age: 0,
         policy: 'Home',
         real: true,
-        profile: '{}',
-        profileText: '',
-        profileStep: 'asked',
       });
-      textHousehold(ctx, added, PROFILE_QUESTION);
     }
-    return true;
-  }
-  // Their answer to the profile question. Claude reads it (outbox "extract_profile" -> setProfile).
-  if (h && h.profileStep === 'asked') {
-    const cur = ctx.db.household.id.find(h.id)!;
-    if (isSkip(m.rawText)) {
-      ctx.db.household.id.update({ ...cur, profileStep: 'done' });
-      textHousehold(ctx, cur, PROFILE_THANKS);
-      return true;
-    }
-    ctx.db.household.id.update({ ...cur, profileText: m.rawText.slice(0, 500), profileStep: 'reading' });
-    enqueue(ctx, 0n, 'extract_profile', { text: m.rawText, householdId: cur.id.toString() });
     return true;
   }
   return false;
 }
-
-/** Words that mean "this is an emergency", used only when Claude could not read a profile answer. */
-const SOUNDS_URGENT = /\b(help|trapped|flood\w*|fire|hurt|injur\w*|emergency|911|bleeding|collapsed?)\b/i;
-
-/**
- * Bridge: Claude read a household's answer to the profile question. Saves the profile. If the answer
- * was really a call for help (hazards in it), it also becomes a report, so nobody's emergency is filed away.
- */
-export const setProfile = spacetimedb.reducer(
-  { householdId: t.u64(), factsJson: t.string(), ok: t.bool() },
-  (ctx, { householdId, factsJson, ok }) => {
-    const h = ctx.db.household.id.find(householdId);
-    if (!h) return;
-    const f = ok ? parseFacts(factsJson) : {};
-    const profile = {
-      age: f.age ?? null,
-      people: f.people ?? null,
-      medical: (f.medical ?? []).map((x) => String(x).toLowerCase()),
-      children: !!f.children,
-      pets: /\b(pets?|dogs?|cats?|puppy|kitten)\b/i.test(h.profileText),
-    };
-    const updated = { ...h, profile: JSON.stringify(profile), profileStep: 'done', age: h.age || (f.age ?? 0) };
-    ctx.db.household.id.update(updated);
-
-    const urgent = ok ? (f.hazards ?? []).length > 0 : SOUNDS_URGENT.test(h.profileText);
-    if (!urgent) {
-      textHousehold(ctx, updated, PROFILE_THANKS);
-      return;
-    }
-    const r = newRequest(ctx, { victimHandle: h.handle, spaceId: h.spaceId, photonSenderId: h.photonSenderId, platform: h.platform, rawText: h.profileText });
-    applyFacts(r, withProfile(ctx, h.handle, ok ? factsJson : '{}'));
-    r.factsStatus = ok ? 'done' : 'failed';
-    setState(ctx, r, 'waiting');
-    save(ctx, r);
-    textHousehold(ctx, updated, followUpText(profile), r.id);
-  }
-);

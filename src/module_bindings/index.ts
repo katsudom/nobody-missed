@@ -56,7 +56,6 @@ import ResolveCheckinReducer from "./resolve_checkin_reducer";
 import ResolveRequestReducer from "./resolve_request_reducer";
 import SetCallsReducer from "./set_calls_reducer";
 import SetFactsReducer from "./set_facts_reducer";
-import SetProfileReducer from "./set_profile_reducer";
 import SimulateReplyReducer from "./simulate_reply_reducer";
 import StartStormReducer from "./start_storm_reducer";
 import SubmitRequestReducer from "./submit_request_reducer";
@@ -244,7 +243,6 @@ const reducersSchema = __reducers(
   __reducerSchema("resolve_request", ResolveRequestReducer),
   __reducerSchema("set_calls", SetCallsReducer),
   __reducerSchema("set_facts", SetFactsReducer),
-  __reducerSchema("set_profile", SetProfileReducer),
   __reducerSchema("simulate_reply", SimulateReplyReducer),
   __reducerSchema("start_storm", StartStormReducer),
   __reducerSchema("submit_request", SubmitRequestReducer),
