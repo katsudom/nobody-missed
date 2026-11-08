@@ -67,6 +67,7 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const stormOn = storms.some((s) => s.active);
   const callsOn = settings.find((x) => x.key === 'calls')?.value === 'on';
   const joined = households.filter((h) => h.real).length;
+  const fake = households.length - joined;
 
   if (!open) {
     return (
@@ -183,17 +184,17 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
             )}
 
             {shownTab === 'reset' && isAdmin && (
-              <Section label="Danger zone" note="These change the shared database for everyone.">
-                <Action tone="danger" title="Reset demo" hint="Back to a clean starting state" onClick={onAskReset} />
+              <Section label="Danger zone" note={sandbox ? 'Only this laptop: nobody else sees it.' : 'These change the shared database for everyone.'}>
+                <Action tone="danger" title="Reset demo" hint="Clears storms, check-ins and reports. Keeps households" onClick={onAskReset} />
                 {sureResetPhones ? (
                   <Action tone="confirm" title="Really forget all team phones?" hint="Everyone must text JOIN again" onClick={() => { setSureResetPhones(false); void run((c) => c.reducers.resetTeamPhones({})).then(ok('Team phones reset: text JOIN again')); }} />
                 ) : (
                   <Action tone="danger" title="Reset team phones" hint="Asks again before it runs" onClick={() => setSureResetPhones(true)} />
                 )}
                 {sureClear ? (
-                  <Action tone="confirm" title="Really delete all households?" hint="Can't be undone" onClick={() => { setSureClear(false); void run((c) => c.reducers.clearHouseholds({})).then(ok('Households cleared')); }} />
+                  <Action tone="confirm" title={`Really remove ${fake} fake households?`} hint="Real team phones stay" onClick={() => { setSureClear(false); void run((c) => c.reducers.removeFakeHouseholds({})).then(ok('Fake households removed')); }} />
                 ) : (
-                  <Action tone="danger" title="Clear households" hint="Asks again before it runs" onClick={() => setSureClear(true)} />
+                  <Action tone="danger" title="Remove fake households" hint={`Undoes seeding: ${fake} fake now. Real phones stay`} onClick={() => setSureClear(true)} />
                 )}
               </Section>
             )}
