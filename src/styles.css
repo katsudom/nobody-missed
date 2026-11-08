@@ -320,3 +320,6 @@ a.btn { text-decoration: none; display: inline-block; }
 .lvl-high { background: #3a2a0c; color: var(--amber); }
 .lvl-normal { background: #2f2360; color: var(--grey); }
 .crow { grid-template-columns: 150px minmax(0, 1fr) 56px auto; }
+
+/* Moving city background; the still image on body shows if this can't run */
+.bgmotion { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
