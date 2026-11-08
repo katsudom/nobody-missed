@@ -331,6 +331,29 @@ a.btn { text-decoration: none; display: inline-block; }
 .lvl-normal { background: #2f2360; color: var(--grey); }
 .crow { grid-template-columns: 150px minmax(0, 1fr) 56px auto; }
 
+/* NWS weather warnings */
+.wx { display: flex; flex-direction: column; gap: 8px; }
+.wxstatus { font-size: var(--fs-sm); padding: 8px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); overflow-wrap: anywhere; }
+.wxstatus.active { border-color: #a31f5f; background: #320d2e; }
+.wxstatus.bad { border-color: #6b4a12; background: #2b2410; color: var(--amber); }
+.wxmuted { color: var(--muted); }
+.wxlist { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+.wxrow { margin: 0; border-radius: 10px; background: var(--card); border: 1px solid var(--line); border-left: 5px solid var(--wx); }
+.wx-tornado { --wx: var(--red); } .wx-hurricane { --wx: var(--amber); } .wx-flood { --wx: var(--blue); }
+.wxrow summary { display: grid; grid-template-columns: 90px auto minmax(0, 1fr) auto; align-items: center; gap: 12px; margin: 0; padding: 10px 14px; color: var(--text); font-size: var(--fs-sm); letter-spacing: normal; text-transform: none; }
+.wxrow summary::-webkit-details-marker { display: none; }
+.wxrow summary:focus-visible { outline: 3px solid #6fe3ff; outline-offset: -3px; border-radius: 10px; }
+.wxtag { color: var(--wx); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.wxevent { font-weight: 700; }
+.wxarea { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wxuntil { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wxbody { padding: 0 14px 12px; font-size: var(--fs-sm); }
+.wxbody p { margin: 6px 0 0; }
+@media (max-width: 700px) {
+  .wxrow summary { grid-template-columns: 1fr auto; gap: 2px 12px; }
+  .wxarea { grid-column: 1 / -1; white-space: normal; }
+}
+
 /* Moving city background; the still image on body shows if this can't run */
 .bgmotion { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
 

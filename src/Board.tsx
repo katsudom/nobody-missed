@@ -10,6 +10,8 @@ import {
   byLevel, Highlighted, Level, levelOf, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
 } from './lib';
 import { maskPhone, personFor } from './policyholders';
+import WeatherWarnings from './WeatherWarnings';
+import { useWeatherAlerts } from './weather';
 
 type Request = Infer<typeof RequestRow>;
 type Household = Infer<typeof HouseholdRow>;
@@ -99,6 +101,7 @@ export default function Board() {
   const run = useRun();
   const toast = useToast();
   const now = useNow();
+  const weather = useWeatherAlerts();
   const [allRequests, ready] = useTable(tables.request);
   const requests = allRequests;
   const [responders] = useTable(tables.responder);
@@ -178,6 +181,8 @@ export default function Board() {
         <span className="spacer" />
         <PageTabs current="reports" />
       </header>
+
+      <WeatherWarnings weather={weather} />
 
       <div className="cols">
         <section className="card queue">
