@@ -21,7 +21,10 @@ import {
   STORM_TEXT,
   checkinAfterCall,
   checkinAfterReply,
+  checkinStateOnUndo,
   decideCheckin,
+  requestStateOnUndo,
+  UNDO_WINDOW,
 } from './rules.ts';
 
 // ---------- Tables (SPEC §4) ----------
@@ -176,11 +179,32 @@ const checkin = table(
   }
 );
 
-const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin, teammate, setting, household, storm, checkin });
+// A Claim or Resolve that can still be taken back: what the case looked like before. One per case
+// and action; the tick drops it once the window closes, so a row here means Undo is still available.
+const undoAction = table(
+  { name: 'undo_action', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    caseKind: t.string(), // "request" | "checkin"
+    caseId: t.u64().index('btree'),
+    action: t.string(), // "claim" | "resolve"
+    actor: t.identity(),
+    doneAt: t.timestamp(),
+    prevState: t.string(),
+    prevUpdatedAt: t.timestamp(),
+    // The report a check-in moved along with it ("" = it didn't move one).
+    linkedPrevState: t.string(),
+    linkedPrevUpdatedAt: t.timestamp(),
+    cancelledOutbox: t.array(t.u64()), // queued texts/calls this action stopped
+  }
+);
+
+const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin, teammate, setting, household, storm, checkin, undoAction });
 export default spacetimedb;
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
 type RequestRow = ReturnType<Ctx['db']['request']['id']['find']> & {};
+type UndoRow = ReturnType<Ctx['db']['undoAction']['id']['find']> & {};
 
 // ---------- Helpers ----------
 const TICK_MICROS = 1_000_000n;
@@ -223,11 +247,64 @@ function setState(ctx: Ctx, r: RequestRow, state: string) {
   r.updatedAt = ctx.timestamp;
 }
 
-function cancelCheckins(ctx: Ctx, requestId: bigint) {
+/** Returns the outbox rows it stopped, so Undo can send them after all. */
+function cancelCheckins(ctx: Ctx, requestId: bigint): bigint[] {
+  const cancelled: bigint[] = [];
   for (const o of [...ctx.db.outbox.requestId.filter(requestId)]) {
     if (o.status === 'queued' && o.kind !== 'extract_facts') {
       ctx.db.outbox.id.update({ ...o, status: 'cancelled' });
+      cancelled.push(o.id);
     }
+  }
+  return cancelled;
+}
+
+type Snapshot = { state: string; updatedAt: Timestamp };
+
+/** Call after the action, with the case as it was before. Replaces an older undo of the same action. */
+function recordUndo(
+  ctx: Ctx,
+  caseKind: 'request' | 'checkin',
+  caseId: bigint,
+  action: 'claim' | 'resolve',
+  prev: Snapshot,
+  linkedPrev: Snapshot | undefined,
+  cancelledOutbox: bigint[]
+) {
+  for (const u of [...ctx.db.undoAction.caseId.filter(caseId)]) {
+    if (u.caseKind === caseKind && u.action === action) ctx.db.undoAction.id.delete(u.id);
+  }
+  ctx.db.undoAction.insert({
+    id: 0n,
+    caseKind,
+    caseId,
+    action,
+    actor: ctx.sender,
+    doneAt: ctx.timestamp,
+    prevState: prev.state,
+    prevUpdatedAt: prev.updatedAt,
+    linkedPrevState: linkedPrev?.state ?? '',
+    linkedPrevUpdatedAt: linkedPrev?.updatedAt ?? ctx.timestamp,
+    cancelledOutbox,
+  });
+}
+
+/** Undo only applies while the case is still the way that action left it (not released, resolved since, ...). */
+function stillAsLeft(row: { state: string; claimedBy: RequestRow['claimedBy'] }, u: UndoRow) {
+  return u.action === 'claim' ? row.state === 'claimed' && !!row.claimedBy?.isEqual(u.actor) : row.state === 'closed';
+}
+
+function restoreRequest(ctx: Ctx, r: RequestRow, u: UndoRow, state: string, updatedAt: Timestamp) {
+  if (u.action === 'claim') r.claimedBy = undefined; // Resolve never changed who holds the case
+  r.state = requestStateOnUndo(state, r.factsStatus);
+  r.updatedAt = updatedAt; // the check-in timers carry on from where they were
+  save(ctx, r);
+}
+
+function restoreOutbox(ctx: Ctx, u: UndoRow) {
+  for (const id of u.cancelledOutbox) {
+    const o = ctx.db.outbox.id.find(id);
+    if (o && o.status === 'cancelled') ctx.db.outbox.id.update({ ...o, status: 'queued' });
   }
 }
 
@@ -290,6 +367,9 @@ export const onDisconnect = spacetimedb.clientDisconnected((ctx) => {
 // ---------- Tick: escalation + T1/T2/T3 (SPEC §4) ----------
 export const tick = spacetimedb.reducer({ onSchedule: tickTimer }, { timer: tickTimer.rowType }, (ctx, { timer: _timer }) => {
   const t0 = now(ctx);
+  for (const u of [...ctx.db.undoAction.iter()]) {
+    if (t0 - u.doneAt.microsSinceUnixEpoch > UNDO_WINDOW) ctx.db.undoAction.id.delete(u.id);
+  }
   // Reports opened by a storm check-in ("needs help") are not chased again: the person just answered us.
   const fromStorm = new Set<bigint>();
   for (const c of ctx.db.checkin.iter()) if (c.requestId !== 0n) fromStorm.add(c.requestId);
@@ -370,10 +450,12 @@ export const claimRequest = spacetimedb.reducer({ requestId: t.u64() }, (ctx, { 
     throw new SenderError(`already taken by ${who}`);
   }
   if (r.state === 'closed') throw new SenderError('request is closed');
+  const prev = { state: r.state, updatedAt: r.updatedAt };
   r.claimedBy = ctx.sender;
   setState(ctx, r, 'claimed');
-  cancelCheckins(ctx, r.id);
+  const cancelled = cancelCheckins(ctx, r.id);
   save(ctx, r);
+  recordUndo(ctx, 'request', r.id, 'claim', prev, undefined, cancelled);
 });
 
 export const releaseRequest = spacetimedb.reducer({ requestId: t.u64() }, (ctx, { requestId }) => {
@@ -387,9 +469,38 @@ export const releaseRequest = spacetimedb.reducer({ requestId: t.u64() }, (ctx, 
 
 export const resolveRequest = spacetimedb.reducer({ requestId: t.u64() }, (ctx, { requestId }) => {
   const r = getRequest(ctx, requestId);
+  const prev = { state: r.state, updatedAt: r.updatedAt };
   setState(ctx, r, 'closed');
-  cancelCheckins(ctx, r.id);
+  const cancelled = cancelCheckins(ctx, r.id);
   save(ctx, r);
+  if (prev.state !== 'closed') recordUndo(ctx, 'request', r.id, 'resolve', prev, undefined, cancelled);
+});
+
+/** Take back your own Claim or Resolve, within UNDO_WINDOW. Works for requests and storm check-ins. */
+export const undoCase = spacetimedb.reducer({ undoId: t.u64() }, (ctx, { undoId }) => {
+  const u = ctx.db.undoAction.id.find(undoId);
+  if (!u || now(ctx) - u.doneAt.microsSinceUnixEpoch > UNDO_WINDOW) throw new SenderError('too late to undo');
+  if (!u.actor.isEqual(ctx.sender)) throw new SenderError('only the responder who did this can undo it');
+  const changed = new SenderError('this case has changed since, so it can no longer be undone');
+
+  if (u.caseKind === 'request') {
+    const r = getRequest(ctx, u.caseId);
+    if (!stillAsLeft(r, u)) throw changed;
+    restoreRequest(ctx, r, u, u.prevState, u.prevUpdatedAt);
+    restoreOutbox(ctx, u);
+  } else {
+    const c = getCheckin(ctx, u.caseId);
+    if (!stillAsLeft(c, u)) throw changed;
+    const stormActive = !!ctx.db.storm.id.find(c.stormId)?.active;
+    if (u.action === 'claim') c.claimedBy = undefined;
+    c.state = checkinStateOnUndo(u.prevState, stormActive);
+    c.updatedAt = u.prevUpdatedAt;
+    ctx.db.checkin.id.update(c);
+    const r = u.linkedPrevState && c.requestId !== 0n ? ctx.db.request.id.find(c.requestId) : undefined;
+    if (r && stillAsLeft(r, u)) restoreRequest(ctx, r, u, u.linkedPrevState, u.linkedPrevUpdatedAt);
+    if (stormActive) restoreOutbox(ctx, u); // nothing from an ended storm goes out later
+  }
+  ctx.db.undoAction.id.delete(u.id);
 });
 
 export const victimReplied = spacetimedb.reducer(
@@ -648,10 +759,15 @@ function setCheckin(ctx: Ctx, c: CheckinRow, state: string) {
 
 const isAwaiting = (state: string) => (AWAITING as string[]).includes(state);
 
-function cancelCheckinOutbox(ctx: Ctx, checkinId: bigint) {
+function cancelCheckinOutbox(ctx: Ctx, checkinId: bigint): bigint[] {
+  const cancelled: bigint[] = [];
   for (const o of [...ctx.db.outbox.iter()]) {
-    if (o.checkinId === checkinId && o.status === 'queued') ctx.db.outbox.id.update({ ...o, status: 'cancelled' });
+    if (o.checkinId === checkinId && o.status === 'queued') {
+      ctx.db.outbox.id.update({ ...o, status: 'cancelled' });
+      cancelled.push(o.id);
+    }
   }
+  return cancelled;
 }
 
 /** The check-in still chasing this phone in the active storm, if any. */
@@ -907,17 +1023,21 @@ export const claimCheckin = spacetimedb.reducer({ checkinId: t.u64() }, (ctx, { 
     throw new SenderError(`already taken by ${who}`);
   }
   if (c.state === 'closed' || c.state === 'safe') throw new SenderError(`check-in is ${c.state}`);
+  const prev = { state: c.state, updatedAt: c.updatedAt };
   c.claimedBy = ctx.sender;
   setCheckin(ctx, c, 'claimed');
-  cancelCheckinOutbox(ctx, c.id);
+  const cancelled = cancelCheckinOutbox(ctx, c.id);
   ctx.db.checkin.id.update(c);
   const r = c.requestId !== 0n ? ctx.db.request.id.find(c.requestId) : undefined;
+  let linkedPrev: Snapshot | undefined;
   if (r && !r.claimedBy && r.state !== 'closed') {
+    linkedPrev = { state: r.state, updatedAt: r.updatedAt };
     r.claimedBy = ctx.sender;
     setState(ctx, r, 'claimed');
-    cancelCheckins(ctx, r.id);
+    cancelled.push(...cancelCheckins(ctx, r.id));
     save(ctx, r);
   }
+  recordUndo(ctx, 'checkin', c.id, 'claim', prev, linkedPrev, cancelled);
 });
 
 export const releaseCheckin = spacetimedb.reducer({ checkinId: t.u64() }, (ctx, { checkinId }) => {
@@ -937,15 +1057,19 @@ export const releaseCheckin = spacetimedb.reducer({ checkinId: t.u64() }, (ctx, 
 
 export const resolveCheckin = spacetimedb.reducer({ checkinId: t.u64() }, (ctx, { checkinId }) => {
   const c = getCheckin(ctx, checkinId);
-  cancelCheckinOutbox(ctx, c.id);
+  const prev = { state: c.state, updatedAt: c.updatedAt };
+  const cancelled = cancelCheckinOutbox(ctx, c.id);
   setCheckin(ctx, c, 'closed');
   ctx.db.checkin.id.update(c);
   const r = c.requestId !== 0n ? ctx.db.request.id.find(c.requestId) : undefined;
+  let linkedPrev: Snapshot | undefined;
   if (r && r.state !== 'closed') {
+    linkedPrev = { state: r.state, updatedAt: r.updatedAt };
     setState(ctx, r, 'closed');
-    cancelCheckins(ctx, r.id);
+    cancelled.push(...cancelCheckins(ctx, r.id));
     save(ctx, r);
   }
+  if (prev.state !== 'closed') recordUndo(ctx, 'checkin', c.id, 'resolve', prev, linkedPrev, cancelled);
 });
 
 /** /victim-sim: play a household's reply ("1", "2", or any text) without a real phone. */

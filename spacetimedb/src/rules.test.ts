@@ -19,7 +19,27 @@ import {
   T2_CALL,
   T3_CALL_NOT_PLACED,
   CALL_RESULT_TIMEOUT,
+  UNDO_WINDOW,
+  requestStateOnUndo,
+  checkinStateOnUndo,
 } from './rules.ts';
+
+test('undo window is 30 real seconds', () => {
+  assert.equal(UNDO_WINDOW, 30_000_000n);
+});
+
+test('undo puts a request back, but never strands it in "new" once facts arrived', () => {
+  assert.equal(requestStateOnUndo('flagged', 'done'), 'flagged');
+  assert.equal(requestStateOnUndo('new', 'pending'), 'new');
+  assert.equal(requestStateOnUndo('new', 'done'), 'waiting');
+  assert.equal(requestStateOnUndo('new', 'failed'), 'waiting');
+});
+
+test('undo puts a check-in back, or no_reply if the storm ended before they answered', () => {
+  assert.equal(checkinStateOnUndo('retexted', true), 'retexted');
+  assert.equal(checkinStateOnUndo('retexted', false), 'no_reply');
+  assert.equal(checkinStateOnUndo('urgent', false), 'urgent');
+});
 
 test('spec example: 82, oxygen, no power → critical', () => {
   const r = scoreFacts({ age: 82, medical: ['oxygen'], hazards: ['no_power'] });

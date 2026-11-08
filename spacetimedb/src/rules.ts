@@ -212,6 +212,20 @@ export function stateAfterReply(text: string): State {
 
 export const CHECKIN_TEXT = 'Still need help? Reply 1 yes, 2 no.';
 
+// ---------- Undo (Claim / Resolve) ----------
+/** How long a responder can take back a Claim or Resolve. Real seconds, even in demo mode. */
+export const UNDO_WINDOW = 30_000_000n;
+
+/** Facts can arrive while a case is claimed; a request put back in "new" after that would never be chased. */
+export function requestStateOnUndo(prevState: string, factsStatus: string): string {
+  return prevState === 'new' && factsStatus !== 'pending' ? 'waiting' : prevState;
+}
+
+/** The ladder only runs during the storm: if it ended meanwhile, a silent household is "no_reply". */
+export function checkinStateOnUndo(prevState: string, stormActive: boolean): string {
+  return !stormActive && (AWAITING as string[]).includes(prevState) ? 'no_reply' : prevState;
+}
+
 // ---------- Storm check-ins (docs/checkin-plan.md) ----------
 // We text every household in the storm zone first; silent ones get re-texted, called, then go urgent.
 
