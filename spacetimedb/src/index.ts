@@ -279,6 +279,9 @@ export const onDisconnect = spacetimedb.clientDisconnected((ctx) => {
 // ---------- Tick: escalation + T1/T2/T3 (SPEC §4) ----------
 export const tick = spacetimedb.reducer({ onSchedule: tickTimer }, { timer: tickTimer.rowType }, (ctx, { timer: _timer }) => {
   const t0 = now(ctx);
+  // Reports opened by a storm check-in ("needs help") are not chased again: the person just answered us.
+  const fromStorm = new Set<bigint>();
+  for (const c of ctx.db.checkin.iter()) if (c.requestId !== 0n) fromStorm.add(c.requestId);
   for (const state of OPEN_UNCLAIMED) {
     for (const r of [...ctx.db.request.byState.filter(state)]) {
       if (r.claimedBy) continue;
@@ -298,7 +301,7 @@ export const tick = spacetimedb.reducer({ onSchedule: tickTimer }, { timer: tick
         if (calls[0]) latestCall = { result: calls[0].result, ageMicros: t0 - calls[0].createdAt.microsSinceUnixEpoch };
       }
 
-      const action = decideTick(r.state, r.tier as Tier, t0 - r.updatedAt.microsSinceUnixEpoch, latestCall, isSynthetic(r), r.checkinsSent > 0);
+      const action = decideTick(r.state, r.tier as Tier, t0 - r.updatedAt.microsSinceUnixEpoch, latestCall, isSynthetic(r) || fromStorm.has(r.id), r.checkinsSent > 0);
       if (action) {
         setState(ctx, r, action.state);
         if (action.outbox === 'send_text') {
