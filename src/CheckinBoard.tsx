@@ -17,11 +17,10 @@ type Storm = Infer<typeof StormRowT>;
 type Request = Infer<typeof RequestRowT>;
 
 const MAX_ROWS = 200;
-// Mirrors spacetimedb/src/rules.ts (S1_RETEXT, S2_CALL, S3_URGENT in demo seconds). Display only.
+// Mirrors spacetimedb/src/rules.ts (S1_RETEXT, S2_CALL in demo seconds). Display only.
 const NEXT_STEP_MS: Record<string, { ms: number; label: string }> = {
-  texted: { ms: 15_000, label: 'Re-text in' },
-  retexted: { ms: 10_000, label: 'Call in' },
-  called: { ms: 10_000, label: 'Urgent in' },
+  texted: { ms: 25_000, label: 'Re-text in' },
+  retexted: { ms: 20_000, label: 'Call in' },
 };
 
 type Bucket = 'urgent' | 'help' | 'waiting' | 'safe' | 'handled';
@@ -223,6 +222,7 @@ function StormChip({ storm, now, inZone }: { storm?: Storm; now: number; inZone:
 }
 
 function nextStep(c: Checkin, now: number) {
+  if (c.state === 'called' && !c.claimedBy) return 'Calling…'; // urgent waits for the real call to end, so no countdown
   const step = NEXT_STEP_MS[c.state];
   if (!step || c.claimedBy) return '';
   const left = step.ms - (now - tsMs(c.updatedAt));
