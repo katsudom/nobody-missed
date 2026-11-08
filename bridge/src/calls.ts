@@ -7,10 +7,9 @@ const NUMBER = process.env.ELEVENLABS_PHONE_NUMBER_ID ?? '';
 
 export const callsEnabled = () => !!(KEY && AGENT && NUMBER);
 
-// The agent's first message in the ElevenLabs dashboard is {{first_message}}; the bridge fills it in.
-// Both scripts keep the same keys: 1 / yes, 2 / no.
+// What the agent actually says is the first_message set on the ElevenLabs agent; this copy is only passed along.
 export const STORM_CALL =
-  'This is an automated emergency check-in. If you are safe, press 1 or say yes. If you need help, press 2 or say no.';
+  "This is an automated emergency check-in. If you are safe, press 1 or say I'm safe. If you are not safe, press 2 or say help.";
 export const REQUEST_CALL =
   'This is an automated check-in from the disaster help line. If you still need help, press 1 or say yes. If you are okay, press 2 or say no.';
 
@@ -43,11 +42,28 @@ type Conversation = {
   metadata?: { call_duration_secs?: number; termination_reason?: string; phone_call?: { call_result?: string | null } | null };
 };
 
-/** "1"/"one"/"yes" -> 1, "2"/"two"/"no" -> 2, first answer the person gave. */
-export function digitFrom(userText: string): string {
-  const m = userText.toLowerCase().match(/\b(1|one|yes|yeah|yep|2|two|no|nope)\b/);
-  if (!m) return '';
-  return ['1', 'one', 'yes', 'yeah', 'yep'].includes(m[1]) ? '1' : '2';
+/** A turn longer than this is background conversation, not an answer to the question. */
+const MAX_ANSWER_WORDS = 6;
+
+/**
+ * One turn of speech or keypad input -> "1" (safe), "2" (help) or "" (not an answer).
+ * "not safe" is checked first so it never counts as "safe". Yes/no are not accepted: bystanders say them constantly.
+ */
+function answerFrom(turn: string): string {
+  const t = turn.toLowerCase().trim();
+  if (!t || t.split(/\s+/).length > MAX_ANSWER_WORDS) return '';
+  if (/\b(not safe|unsafe|help|2|two)\b/.test(t)) return '2';
+  if (/\b(safe|1|one)\b/.test(t)) return '1';
+  return '';
+}
+
+/** The person's first clear answer in the call; long stretches of background talk are skipped. */
+export function digitFrom(userTurns: string[]): string {
+  for (const turn of userTurns) {
+    const a = answerFrom(turn);
+    if (a) return a;
+  }
+  return '';
 }
 
 export type CallOutcome = { result: string; dtmf: string; seconds: number; why: string };
@@ -65,12 +81,13 @@ export async function waitForResult(conversationId: string): Promise<CallOutcome
   }
   if (!c || (c.status !== 'done' && c.status !== 'failed')) return { result: 'failed', dtmf: '', seconds: 0, why: 'no result in 4 min' };
 
-  const said = (c.transcript ?? []).filter((t) => t.role === 'user').map((t) => t.message ?? '').join(' ');
+  const turns = (c.transcript ?? []).filter((t) => t.role === 'user').map((t) => t.message ?? '');
+  const said = turns.join(' ');
   const raw = c.metadata?.phone_call?.call_result ?? (said.trim() ? 'answered' : c.status === 'failed' ? 'failed' : 'no_answer');
   const result = raw === 'voicemail' ? 'no_answer' : raw;
   return {
     result,
-    dtmf: result === 'answered' ? digitFrom(said) : '',
+    dtmf: result === 'answered' ? digitFrom(turns) : '',
     seconds: c.metadata?.call_duration_secs ?? 0,
     why: c.metadata?.termination_reason ?? '',
   };

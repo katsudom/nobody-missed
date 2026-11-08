@@ -270,10 +270,9 @@ export function checkinAfterReply(text: string): 'safe' | 'needs_help' {
   return text.trim() === '1' ? 'safe' : 'needs_help';
 }
 
-/** A finished check-in call: pressed 1 → safe, pressed 2 → needs help, otherwise urgent. */
+/** A finished check-in call: pressed 1 or said safe → safe. Help, or no clear answer → urgent. */
 export function checkinAfterCall(result: string, dtmf: string): CheckinState {
   if (result.toLowerCase() !== 'answered') return 'urgent';
-  const d = dtmf.trim();
-  return d === '1' ? 'safe' : d === '2' ? 'needs_help' : 'urgent';
+  return dtmf.trim() === '1' ? 'safe' : 'urgent';
 }
 

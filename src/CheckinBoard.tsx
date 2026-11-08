@@ -294,7 +294,7 @@ function CheckinDetail({ c, h, req, now, mine, onClaim, onRelease, onResolve }: 
 
   const timer = nextStep(c, now).replace(/^\D+/, '') || (req ? `${levelOf(req.tier).label} · ${levelOf(req.tier).name}` : b === 'urgent' ? 'P1 · Go now' : '');
   const statusText: Record<Bucket, string> = {
-    urgent: 'No contact: welfare check',
+    urgent: call?.result === 'answered' ? 'Asked for help: send someone' : 'No contact: welfare check',
     help: 'Needs help',
     waiting: c.state === 'no_reply' ? 'No reply (storm ended)' : 'Waiting for a reply',
     safe: 'Checked in safe',

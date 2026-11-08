@@ -965,10 +965,6 @@ export const checkinCallResult = spacetimedb.reducer(
     if (c.state !== 'called') return; // claimed/closed meanwhile: record only
     const next = checkinAfterCall(result, dtmf);
     setCheckin(ctx, c, next);
-    if (next === 'needs_help') {
-      const h = ctx.db.household.id.find(c.householdId);
-      if (h) openReport(ctx, c, h, 'Pressed 2 on the check-in call: needs help');
-    }
     ctx.db.checkin.id.update(c);
   }
 );
