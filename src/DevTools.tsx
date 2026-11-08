@@ -172,7 +172,11 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
               <Section label="Danger zone" note={sandbox ? 'Only this laptop: nobody else sees it.' : 'These change the shared database for everyone.'}>
                 <Action tone="danger" title="Reset demo" hint="Clears storms, check-ins and reports. Keeps households" onClick={onAskReset} />
                 {sureResetPhones ? (
-                  <Action tone="confirm" title="Really forget all team phones?" hint="Everyone must text JOIN again" onClick={() => { setSureResetPhones(false); void run((c) => c.reducers.resetTeamPhones({})).then(ok('Team phones reset: text JOIN again')); }} />
+                  <>
+                    {/* Cancel sits where the first button was, so a double-click can't confirm by accident. */}
+                    <Action title="Cancel" hint="Keep all team phones" onClick={() => setSureResetPhones(false)} />
+                    <Action tone="confirm" title="Are you sure?" hint="Forgets every team phone. Everyone must text JOIN again" onClick={() => { setSureResetPhones(false); void run((c) => c.reducers.resetTeamPhones({})).then(ok('Team phones reset: text JOIN again')); }} />
+                  </>
                 ) : (
                   <Action tone="danger" title="Reset team phones" hint="Asks again before it runs" onClick={() => setSureResetPhones(true)} />
                 )}
