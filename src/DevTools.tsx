@@ -100,29 +100,6 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
           )}
         </>
       ) : (
-            <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started in Richardson: alerts sent to every team phone'))}>Start storm</button>
-          )}
-          <p className="meta">
-            Team phones join by texting JOIN to the Photon number. Joined now: {households.filter((h) => h.real).length}
-          </p>
-          {sureResetPhones ? (
-            <button className="btn danger solid" onClick={() => { setSureResetPhones(false); void run((c) => c.reducers.resetTeamPhones({})).then(ok('Team phones reset: text JOIN again')); }}>
-              Really forget all team phones?
-            </button>
-          ) : (
-            <button className="btn danger" onClick={() => setSureResetPhones(true)}>Reset team phones</button>
-          )}
-          {onInject && <button className="btn" onClick={onInject}>Inject 2,000 reports</button>}
-          <button className="btn danger" onClick={onAskReset}>Reset demo</button>
-          {sureClear ? (
-            <button className="btn danger solid" onClick={() => { setSureClear(false); void run((c) => c.reducers.clearHouseholds({})).then(ok('Households cleared')); }}>
-              Really delete all households?
-            </button>
-          ) : (
-            <button className="btn danger" onClick={() => setSureClear(true)}>Clear households</button>
-          )}
-        </>
-      ) : (
         <>
           <p className="meta">Not a teammate yet. Send Dominic this id:</p>
           <code className="devid">{me || 'connecting…'}</code>
