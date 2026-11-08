@@ -27,11 +27,11 @@ const NEXT_STEP_MS: Record<string, { ms: number; label: string }> = {
 
 type Bucket = 'urgent' | 'help' | 'waiting' | 'safe' | 'handled';
 const BUCKETS: { key: Bucket; label: string; color: string }[] = [
-  { key: 'urgent', label: 'Urgent: no contact', color: 'var(--red)' },
-  { key: 'help', label: 'Needs help', color: 'var(--amber)' },
-  { key: 'waiting', label: 'No reply yet', color: 'var(--grey)' },
-  { key: 'safe', label: 'Checked in safe', color: 'var(--green)' },
-  { key: 'handled', label: 'Responder on it', color: 'var(--blue)' },
+  { key: 'urgent', label: 'Urgent', color: 'var(--red)' },
+  { key: 'help', label: 'Report', color: 'var(--amber)' },
+  { key: 'waiting', label: 'No Reply', color: 'var(--grey)' },
+  { key: 'safe', label: 'Safe', color: 'var(--green)' },
+  { key: 'handled', label: 'Claimed', color: 'var(--blue)' },
 ];
 
 function bucketOf(c: Checkin): Bucket {
@@ -50,7 +50,7 @@ const STATE_LABEL: Record<string, string> = {
   retexted: 'Re-texted',
   called: 'Calling',
   safe: 'Safe',
-  needs_help: 'Needs help',
+  needs_help: 'Report',
   urgent: 'Urgent',
   claimed: 'Claimed',
   closed: 'Resolved',
@@ -100,7 +100,6 @@ export default function CheckinBoard() {
   }, [checkins, storm, picked, reqs, mode, hh]);
 
   const total = mine.length;
-  const replied = mine.filter((c) => c.reply !== '').length;
   const pct = total ? Math.round((counts.safe / total) * 100) : 0;
   const shownTotal = tab === 'all' ? total : counts[tab];
 
@@ -119,37 +118,24 @@ export default function CheckinBoard() {
     <div className="board">
       <header className="head">
         <div>
-          <div className="eyebrow">Nobody Missed · Storm check-ins</div>
+          <div className="eyebrow">Nobody Missed · Emergency check-ins</div>
           <h1>Check-In Command Center</h1>
         </div>
         <span className="spacer" />
         <span className={`modetag${mode === 'real' ? ' is-real' : ''}`}>{mode === 'real' ? 'Real phones only' : 'Includes fake data'}</span>
         <span className={`live ${isActive ? 'on' : ''}`} role="status">{isActive ? 'Live' : 'Reconnecting…'}</span>
         <StormChip storm={storm} now={now} inZone={total} />
-        <a className="btn" href="#/reports">Reports board</a>
       </header>
-
-      <section className="card summary" aria-label="Storm check-in progress">
-        <div className="sumtop">
-          <div>
-            <span className="eyebrow">Checked in safe</span> <span className="pct">{pct}%</span>
-          </div>
-          <div className="meta">
-            {replied.toLocaleString()} of {total.toLocaleString()} alerted households have replied
-            {storm ? ` · ${storm.cities}` : ''}
-          </div>
-        </div>
-        <div className="legend">
-          {BUCKETS.map((b) => (
-            <span key={b.key}><b className="dot" style={{ background: b.color }} />{counts[b.key].toLocaleString()} <em>{b.label}</em></span>
-          ))}
-        </div>
-      </section>
 
       <div className="cols">
         <section className="card queue">
           <div className="qhead">
-            <h2>Households in the storm</h2>
+            <div className="qtitle">
+              <h2>Households in the impact area</h2>
+              <span className="qstat">
+                <b>{pct}%</b> checked in safe
+              </span>
+            </div>
             <div className="tabs" role="tablist" aria-label="Filter households">
               {BUCKETS.map((b) => (
                 <button key={b.key} role="tab" aria-selected={tab === b.key} className={`tab ${tab === b.key ? 'on' : ''}`} onClick={() => setTab(b.key)}>
@@ -193,6 +179,7 @@ export default function CheckinBoard() {
         <div className="side">
           {selectedC && (
             <CheckinDetail
+              key={selectedC.id.toString()}
               c={selectedC}
               h={hh.get(selectedC.householdId)}
               req={selectedC.requestId !== 0n ? reqs.get(selectedC.requestId) : undefined}
@@ -267,15 +254,10 @@ const CheckinRow = memo(function CheckinRow({ c, h, req, now, claimer, mine, sel
         <div className="text">
           {req ? req.rawText.split('\n')[0] : h ? `${h.address}, ${h.city}${h.age ? ` · age ${h.age}` : ''}` : ''}
         </div>
-        <div className="sub">
-          <span className="reason">{c.textsSent} text{c.textsSent === 1 ? '' : 's'}</span>
-          {c.callsPlaced > 0 && <span className="reason">{c.callsPlaced} call{c.callsPlaced === 1 ? '' : 's'}</span>}
-          {c.reply && <span className="reason">replied “{c.reply.slice(0, 30)}”</span>}
-        </div>
       </div>
       <span className={`score ${req ? `tier-${req.tier}` : ''}`}>{req ? req.score : ''}</span>
       <div className="actions">
-        {c.claimedBy && <span className="onway">{claimer} is on it</span>}
+        {c.claimedBy && c.state !== 'closed' && <span className="onway">{claimer} is on it</span>}
         {canClaim(c) && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
         {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
         {canResolve(c, mine) && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
@@ -288,6 +270,7 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
   const [outbox] = useTable(tables.outbox);
   const [calls] = useTable(tables.call);
   const b = bucketOf(c);
+  const [chatOpen, setChatOpen] = useState(false);
   const quotes = req ? parseQuotes(req.facts) : [];
   const reasons = req ? parseReasons(req.reasons) : [];
 
@@ -315,9 +298,25 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
   return (
     <aside className="card detail gdetail" aria-label="Household details">
       <div className="ghead">
-        <h2>{h?.name ?? 'Unknown household'}</h2>
+        <div className="gheadrow">
+          <h2>{h?.name ?? 'Unknown household'}</h2>
+          <button className="btn" aria-expanded={chatOpen} onClick={() => setChatOpen((v) => !v)}>
+            {chatOpen ? 'Hide chat' : 'Chat history'}
+          </button>
+        </div>
         {h && <div className="gmeta">{h.age ? `${h.age} · ` : ''}{h.address}, {h.city}</div>}
       </div>
+
+      {chatOpen && (
+        <div className="thread" aria-label="Chat history">
+          <div className="tout">{STORM_TEXT}<span className="tat">{clock(tsMs(c.createdAt))}</span></div>
+          {c.textsSent >= 2 && <div className="tout">{STORM_RETEXT}<span className="tat">{clock(sent[1] ? tsMs(sent[1].createdAt) : undefined)}</span></div>}
+          {c.callsPlaced > 0 && <div className={`tcall ${steps[1].bad ? 'bad' : ''}`}>{steps[1].label} {steps[1].at}</div>}
+          {c.reply
+            ? <div className="tin">{req ? <Highlighted text={req.rawText} quotes={quotes} /> : c.reply}</div>
+            : <div className="tcall">No reply yet</div>}
+        </div>
+      )}
 
       <div className="gsec">
         <div className="glabel">Status</div>
@@ -354,13 +353,6 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
         </div>
       </div>
 
-      {c.reply && (
-        <div className="gsec">
-          <div className="glabel">They said · {clock(tsMs(c.updatedAt))}</div>
-          <div className="ggroup gquote">{req ? <Highlighted text={req.rawText} quotes={quotes} /> : c.reply}</div>
-        </div>
-      )}
-
       {reasons.length > 0 && (
         <div className="gsec">
           <div className="glabel">Why first</div>
@@ -378,6 +370,10 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
     </aside>
   );
 }
+
+// The alert texts as the module sends them (spacetimedb/src/rules.ts STORM_TEXT / STORM_RETEXT). Display only.
+const STORM_TEXT = 'This is an automated emergency check-in. Reply 1 if you are safe. Reply 2 if you need help.';
+const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if you need help.';
 
 function Check({ on = false }: { on?: boolean }) {
   return on
