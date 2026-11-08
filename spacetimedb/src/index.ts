@@ -262,6 +262,8 @@ function applyFacts(r: RequestRow, factsJson: string) {
 
 // ---------- Lifecycle ----------
 export const init = spacetimedb.init((ctx) => {
+  // Whoever first publishes this database owns it. Only they can open it as a sandbox (openSandbox).
+  if (!ctx.db.setting.key.find('publisher')) ctx.db.setting.insert({ key: 'publisher', value: ctx.sender.toHexString() });
   ensureTick(ctx);
 });
 
@@ -463,8 +465,25 @@ export const registerResponder = spacetimedb.reducer({ name: t.string() }, (ctx,
 // Dominic's `spacetime login` identity (his terminal). Always an admin; the only one who can add admins.
 const OWNER_HEX = 'c200283d09f118ee9b0b658fa4929b296cd5c10374ffb52e3766cf6d1cd76588';
 
+/** A laptop's private local database, opened by its publisher: every Dev tools action is open to anyone. */
+function isSandbox(ctx: Ctx) {
+  return ctx.db.setting.key.find('sandbox')?.value === 'on';
+}
+
+/**
+ * For a local database (`npm run sandbox`): lets anyone connected seed, run storms and reset.
+ * Only the identity that first published this database can call it, so the shared online one stays locked.
+ */
+export const openSandbox = spacetimedb.reducer((ctx) => {
+  const publisher = ctx.db.setting.key.find('publisher')?.value;
+  if (!publisher || publisher !== ctx.sender.toHexString()) throw new SenderError('only the publisher of this database can open it as a sandbox');
+  if (ctx.db.setting.key.find('sandbox')) ctx.db.setting.key.update({ key: 'sandbox', value: 'on' });
+  else ctx.db.setting.insert({ key: 'sandbox', value: 'on' });
+});
+
 function requireAdmin(ctx: Ctx, what: string) {
   const me = ctx.sender.toHexString();
+  if (isSandbox(ctx)) return;
   if (me !== OWNER_HEX && !ctx.db.admin.identityHex.find(me)) {
     throw new SenderError(`${what} is locked to admins (ask Dominic)`);
   }
@@ -473,6 +492,7 @@ function requireAdmin(ctx: Ctx, what: string) {
 /** Teammates and admins: storms, seeding, injecting. */
 function requireTeammate(ctx: Ctx, what: string) {
   const me = ctx.sender.toHexString();
+  if (isSandbox(ctx)) return;
   if (me !== OWNER_HEX && !ctx.db.admin.identityHex.find(me) && !ctx.db.teammate.identityHex.find(me)) {
     throw new SenderError(`${what} is locked to teammates (send Dominic your Dev id)`);
   }

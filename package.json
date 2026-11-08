@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:sandbox": "vite --mode sandbox",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "spacetime:dev": "spacetime dev --server local",
     "spacetime:generate": "spacetime generate --lang typescript --out-dir src/module_bindings --module-path spacetimedb",
     "spacetime:publish:local": "spacetime publish --module-path spacetimedb --server local",
-    "spacetime:publish": "spacetime publish nobody-missed --module-path spacetimedb --server maincloud"
+    "spacetime:publish": "spacetime publish nobody-missed --module-path spacetimedb --server maincloud",
+    "sandbox:publish": "spacetime publish nobody-missed --module-path spacetimedb --server local --delete-data=on-conflict --yes && spacetime call nobody-missed open_sandbox --server local"
   },
   "dependencies": {
     "react": "^18.3.1",

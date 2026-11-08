@@ -24,7 +24,9 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const mode = useMode();
 
   const me = identity?.toHexString() ?? '';
-  const isAdmin = !!me && admins.some((a) => a.identityHex === me);
+  // Local sandbox (`npm run sandbox:publish`): every action is open to anyone on this laptop.
+  const sandbox = settings.find((x) => x.key === 'sandbox')?.value === 'on';
+  const isAdmin = sandbox || (!!me && admins.some((a) => a.identityHex === me));
   const isTeammate = isAdmin || (!!me && teammates.some((x) => x.identityHex === me));
   const askedForDev = new URLSearchParams(window.location.search).has('dev');
   if (!isTeammate && !askedForDev) return null;
@@ -59,7 +61,7 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
       </p>
       {isTeammate ? (
         <>
-          <p className="meta">Shared database: affects everyone.</p>
+          <p className="meta">{sandbox ? 'Local sandbox: only this laptop, nobody else sees it.' : 'Shared database: affects everyone.'}</p>
           <button className="btn" onClick={() => run((c) => c.reducers.seedHouseholds({ n: 100 })).then(ok('Added 100 fake households'))}>
             Seed 100 fake households
           </button>

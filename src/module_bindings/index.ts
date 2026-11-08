@@ -45,6 +45,7 @@ import EndStormReducer from "./end_storm_reducer";
 import EnrollHouseholdReducer from "./enroll_household_reducer";
 import InjectLoadReducer from "./inject_load_reducer";
 import MakeAdminReducer from "./make_admin_reducer";
+import OpenSandboxReducer from "./open_sandbox_reducer";
 import RegisterResponderReducer from "./register_responder_reducer";
 import ReleaseCheckinReducer from "./release_checkin_reducer";
 import ReleaseRequestReducer from "./release_request_reducer";
@@ -233,6 +234,7 @@ const reducersSchema = __reducers(
   __reducerSchema("enroll_household", EnrollHouseholdReducer),
   __reducerSchema("inject_load", InjectLoadReducer),
   __reducerSchema("make_admin", MakeAdminReducer),
+  __reducerSchema("open_sandbox", OpenSandboxReducer),
   __reducerSchema("register_responder", RegisterResponderReducer),
   __reducerSchema("release_checkin", ReleaseCheckinReducer),
   __reducerSchema("release_request", ReleaseRequestReducer),

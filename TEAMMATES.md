@@ -37,6 +37,18 @@ Open http://localhost:5173. Your copy talks to the same live online database as 
 
 **Careful:** the database is shared. "Reset demo" clears it for everyone.
 
+## Your own sandbox (fake data, only on your laptop)
+
+For front-end work you can run a private database with as many fake households and storms as you like. Nobody else sees it. This one needs the [SpacetimeDB CLI](https://spacetimedb.com/install).
+
+```bash
+spacetime start            # leave this running in its own terminal
+npm run sandbox:publish    # once, and again after you pull backend changes
+npm run dev:sandbox
+```
+
+Open the address it prints. Click **Dev** (bottom right). You don't need to be added as a teammate: Seed, Start storm and Reset all work. The panel shows **Local sandbox** so you know you're not on the shared database.
+
 ## What you can change
 
 - **Yours:** everything in `src/` (the responder board). Don't edit `src/module_bindings/`. It's generated.
