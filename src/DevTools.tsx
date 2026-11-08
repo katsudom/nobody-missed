@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import { useRun, useToast } from './lib';
@@ -8,6 +8,38 @@ import { setMode, useMode } from './mode';
 // these actions from anyone who isn't an admin.
 // To become an admin: open the site with ?dev (e.g. /?dev#/board), copy your id, and have
 // Dominic run:  spacetime call nobody-missed make_admin '"<id>"' --server maincloud
+
+type Tab = 'demo' | 'team' | 'reset';
+const TAB_KEY = 'devtools.tab';
+
+function readTab(): Tab {
+  try {
+    const t = localStorage.getItem(TAB_KEY);
+    if (t === 'demo' || t === 'team' || t === 'reset') return t;
+  } catch { /* storage blocked */ }
+  return 'demo';
+}
+
+// One action: a title and a short line under it saying what it does.
+function Action({ title, hint, tone, onClick }: { title: string; hint?: string; tone?: 'primary' | 'danger' | 'confirm'; onClick: () => void }) {
+  return (
+    <button className={`devact${tone ? ` devact--${tone}` : ''}`} onClick={onClick}>
+      <span className="devact__title">{title}</span>
+      {hint && <span className="devact__hint">{hint}</span>}
+    </button>
+  );
+}
+
+function Section({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
+  return (
+    <section className="devsec">
+      <h3 className="devsec__label">{label}</h3>
+      {note && <p className="devsec__note">{note}</p>}
+      {children}
+    </section>
+  );
+}
+
 export default function DevTools({ onInject, onAskReset }: { onInject?: () => void; onAskReset: () => void }) {
   const { identity } = useSpacetimeDB();
   const [admins] = useTable(tables.admin);
@@ -18,6 +50,7 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const run = useRun();
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [tab, setTabState] = useState<Tab>(readTab);
   const [sureClear, setSureClear] = useState(false);
   const [sureResetPhones, setSureResetPhones] = useState(false);
   const [households] = useTable(tables.household);
@@ -31,16 +64,32 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const askedForDev = new URLSearchParams(window.location.search).has('dev');
   if (!isTeammate && !askedForDev) return null;
 
+  const stormOn = storms.some((s) => s.active);
+  const callsOn = settings.find((x) => x.key === 'calls')?.value === 'on';
+  const joined = households.filter((h) => h.real).length;
+
   if (!open) {
     return (
       <button className="devpill" onClick={() => setOpen(true)} aria-label="Open dev tools">
+        <span className={`devdot${stormOn ? ' is-live' : ''}`} aria-hidden />
         Dev
       </button>
     );
   }
 
-  const stormOn = storms.some((s) => s.active);
   const ok = (msg: string) => (done: boolean) => { if (done) toast(msg, true); };
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    setSureClear(false);
+    setSureResetPhones(false);
+    try { localStorage.setItem(TAB_KEY, t); } catch { /* storage blocked */ }
+  };
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'demo', label: 'Demo' },
+    { id: 'team', label: 'Team' },
+    ...(isAdmin ? [{ id: 'reset' as Tab, label: 'Reset' }] : []),
+  ];
+  const shownTab = tabs.some((t) => t.id === tab) ? tab : 'demo';
 
   return (
     <div className="devpanel" role="dialog" aria-label="Dev tools">
@@ -48,76 +97,113 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
         <strong>Dev tools</strong>
         <button className="devx" onClick={() => setOpen(false)} aria-label="Close dev tools">×</button>
       </div>
-      <div className="devmode" role="radiogroup" aria-label="What the boards show">
-        <button role="radio" aria-checked={mode === 'real'} className={`devmode__opt${mode === 'real' ? ' is-on' : ''}`} onClick={() => setMode('real')}>
-          Real phones
-        </button>
-        <button role="radio" aria-checked={mode === 'all'} className={`devmode__opt${mode === 'all' ? ' is-on' : ''}`} onClick={() => setMode('all')}>
-          Fake data
-        </button>
+
+      <div className="devstatus" aria-label="Current state">
+        {sandbox && <span className="devchip is-amber"><span className="devdot" aria-hidden />Local sandbox</span>}
+        <span className={`devchip${stormOn ? ' is-red' : ''}`}><span className="devdot" aria-hidden />Storm {stormOn ? 'on' : 'off'}</span>
+        <span className={`devchip${callsOn ? ' is-amber' : ''}`}><span className="devdot" aria-hidden />Calls {callsOn ? 'on' : 'off'}</span>
+        <span className="devchip"><span className="devdot" aria-hidden />{joined} phone{joined === 1 ? '' : 's'}</span>
       </div>
-      <p className="meta">
-        {mode === 'real' ? "Showing only teammates' phones. This browser only." : 'Showing real phones plus fake households. This browser only.'}
-      </p>
+
       {isTeammate ? (
         <>
-          <p className="meta">{sandbox ? 'Local sandbox: only this laptop, nobody else sees it.' : 'Shared database: affects everyone.'}</p>
-          <button className="btn" onClick={() => run((c) => c.reducers.seedHouseholds({ n: 100 })).then(ok('Added 100 fake households'))}>
-            Seed 100 fake households
-          </button>
-          {stormOn ? (
-            <button className="btn danger" onClick={() => run((c) => c.reducers.endStorm({})).then(ok('Storm ended'))}>End storm</button>
-          ) : (
-            <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started in Richardson: alerts sent to every team phone'))}>Start storm</button>
-          )}
-          <p className="meta">
-            Phone calls: <b>{settings.find((x) => x.key === 'calls')?.value === 'on' ? 'ON (uses credits)' : 'off'}</b>
-            {isAdmin ? '' : ' · only Dominic can turn calls on'}
-          </p>
-          <p className="meta">
-            Team phones join by texting JOIN to the Photon number. Joined now: {households.filter((h) => h.real).length}
-          </p>
-          {onInject && <button className="btn" onClick={onInject}>Inject 2,000 reports</button>}
-          {isAdmin && (
-            <>
-              <p className="meta">Dominic only:</p>
-              {settings.find((x) => x.key === 'calls')?.value === 'on' ? (
-                <button className="btn" onClick={() => run((c) => c.reducers.setCalls({ on: false })).then(ok('Calls off'))}>Turn calls off</button>
-              ) : (
-                <button className="btn danger" onClick={() => run((c) => c.reducers.setCalls({ on: true })).then(ok('Calls on until the storm ends'))}>
-                  Turn calls on (uses credits)
-                </button>
-              )}
-              <input className="devinput" placeholder="Teammate's Dev id" value={newMate} onChange={(e) => setNewMate(e.target.value)} />
+          <div className="devtabs" role="tablist" aria-label="Dev tools sections">
+            {tabs.map((t) => (
               <button
-                className="btn"
-                onClick={() => run((c) => c.reducers.addTeammate({ identityHex: newMate })).then((done) => { if (done) { toast('Teammate added', true); setNewMate(''); } })}
+                key={t.id}
+                role="tab"
+                aria-selected={shownTab === t.id}
+                className={`devtabs__tab${shownTab === t.id ? ' is-on' : ''}${t.id === 'reset' ? ' is-danger' : ''}`}
+                onClick={() => setTab(t.id)}
               >
-                Add teammate ({teammates.length})
+                {t.label}
               </button>
-              {sureResetPhones ? (
-                <button className="btn danger solid" onClick={() => { setSureResetPhones(false); void run((c) => c.reducers.resetTeamPhones({})).then(ok('Team phones reset: text JOIN again')); }}>
-                  Really forget all team phones?
-                </button>
-              ) : (
-                <button className="btn danger" onClick={() => setSureResetPhones(true)}>Reset team phones</button>
-              )}
-              <button className="btn danger" onClick={onAskReset}>Reset demo</button>
-              {sureClear ? (
-                <button className="btn danger solid" onClick={() => { setSureClear(false); void run((c) => c.reducers.clearHouseholds({})).then(ok('Households cleared')); }}>
-                  Really delete all households?
-                </button>
-              ) : (
-                <button className="btn danger" onClick={() => setSureClear(true)}>Clear households</button>
-              )}
-            </>
-          )}
+            ))}
+          </div>
+
+          <div className="devbody" role="tabpanel">
+            {shownTab === 'demo' && (
+              <>
+                <Section label="What this browser shows" note="Only changes this browser.">
+                  <div className="devmode" role="radiogroup" aria-label="What the boards show">
+                    <button role="radio" aria-checked={mode === 'real'} className={`devmode__opt${mode === 'real' ? ' is-on' : ''}`} onClick={() => setMode('real')}>
+                      Real phones
+                    </button>
+                    <button role="radio" aria-checked={mode === 'all'} className={`devmode__opt${mode === 'all' ? ' is-on' : ''}`} onClick={() => setMode('all')}>
+                      Fake data
+                    </button>
+                  </div>
+                </Section>
+                <Section label="Storm" note={sandbox ? 'Only this laptop: nobody else sees it.' : 'Shared database: affects everyone.'}>
+                  {stormOn ? (
+                    <Action tone="danger" title="End storm" hint="Stops check-ins and turns calls off" onClick={() => run((c) => c.reducers.endStorm({})).then(ok('Storm ended'))} />
+                  ) : (
+                    <Action tone="primary" title="Start storm" hint={sandbox ? 'Fake households reply on their own' : 'Texts an alert to every team phone'} onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started in Richardson: alerts sent to every team phone'))} />
+                  )}
+                  <Action title="Seed 100 fake households" hint="Shown when Fake data is on" onClick={() => run((c) => c.reducers.seedHouseholds({ n: 100 })).then(ok('Added 100 fake households'))} />
+                  {onInject && <Action title="Inject 2,000 reports" hint="Load test the board" onClick={onInject} />}
+                </Section>
+              </>
+            )}
+
+            {shownTab === 'team' && (
+              <>
+                <Section label="Team phones" note="Phones join by texting JOIN to the Photon number.">
+                  <p className="devstat"><b>{joined}</b> joined now</p>
+                </Section>
+                <Section label="Phone calls" note={isAdmin ? 'Calls turn off by themselves when a storm ends.' : 'Only Dominic can turn calls on.'}>
+                  {isAdmin ? (
+                    callsOn ? (
+                      <Action title="Turn calls off" onClick={() => run((c) => c.reducers.setCalls({ on: false })).then(ok('Calls off'))} />
+                    ) : (
+                      <Action tone="danger" title="Turn calls on" hint="Uses credits" onClick={() => run((c) => c.reducers.setCalls({ on: true })).then(ok('Calls on until the storm ends'))} />
+                    )
+                  ) : (
+                    <p className="devstat"><b>{callsOn ? 'On' : 'Off'}</b></p>
+                  )}
+                </Section>
+                {isAdmin && (
+                  <Section label={`Teammates (${teammates.length})`} note="Paste the id from their Dev panel.">
+                    <form
+                      className="devrow"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!newMate.trim()) return;
+                        void run((c) => c.reducers.addTeammate({ identityHex: newMate.trim() })).then((done) => { if (done) { toast('Teammate added', true); setNewMate(''); } });
+                      }}
+                    >
+                      <input className="devinput" aria-label="Teammate's Dev id" placeholder="Teammate's Dev id" value={newMate} onChange={(e) => setNewMate(e.target.value)} />
+                      <button className="devadd" type="submit" disabled={!newMate.trim()}>Add</button>
+                    </form>
+                  </Section>
+                )}
+                <Section label="Your id">
+                  <code className="devid">{me || 'connecting…'}</code>
+                </Section>
+              </>
+            )}
+
+            {shownTab === 'reset' && isAdmin && (
+              <Section label="Danger zone" note="These change the shared database for everyone.">
+                <Action tone="danger" title="Reset demo" hint="Back to a clean starting state" onClick={onAskReset} />
+                {sureResetPhones ? (
+                  <Action tone="confirm" title="Really forget all team phones?" hint="Everyone must text JOIN again" onClick={() => { setSureResetPhones(false); void run((c) => c.reducers.resetTeamPhones({})).then(ok('Team phones reset: text JOIN again')); }} />
+                ) : (
+                  <Action tone="danger" title="Reset team phones" hint="Asks again before it runs" onClick={() => setSureResetPhones(true)} />
+                )}
+                {sureClear ? (
+                  <Action tone="confirm" title="Really delete all households?" hint="Can't be undone" onClick={() => { setSureClear(false); void run((c) => c.reducers.clearHouseholds({})).then(ok('Households cleared')); }} />
+                ) : (
+                  <Action tone="danger" title="Clear households" hint="Asks again before it runs" onClick={() => setSureClear(true)} />
+                )}
+              </Section>
+            )}
+          </div>
         </>
       ) : (
-        <>
-          <p className="meta">Not a teammate yet. Send Dominic this id:</p>
+        <Section label="Not a teammate yet" note="Send Dominic this id:">
           <code className="devid">{me || 'connecting…'}</code>
-        </>
+        </Section>
       )}
     </div>
   );
