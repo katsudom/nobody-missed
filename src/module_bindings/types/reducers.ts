@@ -6,6 +6,7 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AddTeammateReducer from "../add_teammate_reducer";
 import CallResultReducer from "../call_result_reducer";
 import CheckinCallResultReducer from "../checkin_call_result_reducer";
 import ClaimCheckinReducer from "../claim_checkin_reducer";
@@ -20,6 +21,7 @@ import RegisterResponderReducer from "../register_responder_reducer";
 import ReleaseCheckinReducer from "../release_checkin_reducer";
 import ReleaseRequestReducer from "../release_request_reducer";
 import RemoveAdminReducer from "../remove_admin_reducer";
+import RemoveTeammateReducer from "../remove_teammate_reducer";
 import ResetDemoReducer from "../reset_demo_reducer";
 import ResetTeamPhonesReducer from "../reset_team_phones_reducer";
 import ResolveCheckinReducer from "../resolve_checkin_reducer";
@@ -32,6 +34,7 @@ import SubmitRequestReducer from "../submit_request_reducer";
 import TakeOutboxReducer from "../take_outbox_reducer";
 import VictimRepliedReducer from "../victim_replied_reducer";
 
+export type AddTeammateParams = __Infer<typeof AddTeammateReducer>;
 export type CallResultParams = __Infer<typeof CallResultReducer>;
 export type CheckinCallResultParams = __Infer<typeof CheckinCallResultReducer>;
 export type ClaimCheckinParams = __Infer<typeof ClaimCheckinReducer>;
@@ -46,6 +49,7 @@ export type RegisterResponderParams = __Infer<typeof RegisterResponderReducer>;
 export type ReleaseCheckinParams = __Infer<typeof ReleaseCheckinReducer>;
 export type ReleaseRequestParams = __Infer<typeof ReleaseRequestReducer>;
 export type RemoveAdminParams = __Infer<typeof RemoveAdminReducer>;
+export type RemoveTeammateParams = __Infer<typeof RemoveTeammateReducer>;
 export type ResetDemoParams = __Infer<typeof ResetDemoReducer>;
 export type ResetTeamPhonesParams = __Infer<typeof ResetTeamPhonesReducer>;
 export type ResolveCheckinParams = __Infer<typeof ResolveCheckinReducer>;

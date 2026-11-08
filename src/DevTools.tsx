@@ -11,6 +11,8 @@ import { setMode, useMode } from './mode';
 export default function DevTools({ onInject, onAskReset }: { onInject?: () => void; onAskReset: () => void }) {
   const { identity } = useSpacetimeDB();
   const [admins] = useTable(tables.admin);
+  const [teammates] = useTable(tables.teammate);
+  const [newMate, setNewMate] = useState('');
   const [storms] = useTable(tables.storm);
   const run = useRun();
   const toast = useToast();
@@ -22,8 +24,9 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
 
   const me = identity?.toHexString() ?? '';
   const isAdmin = !!me && admins.some((a) => a.identityHex === me);
+  const isTeammate = isAdmin || (!!me && teammates.some((x) => x.identityHex === me));
   const askedForDev = new URLSearchParams(window.location.search).has('dev');
-  if (!isAdmin && !askedForDev) return null;
+  if (!isTeammate && !askedForDev) return null;
 
   if (!open) {
     return (
@@ -53,7 +56,7 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
       <p className="meta">
         {mode === 'real' ? "Showing only teammates' phones. This browser only." : 'Showing real phones plus fake households. This browser only.'}
       </p>
-      {isAdmin ? (
+      {isTeammate ? (
         <>
           <p className="meta">Shared database: affects everyone.</p>
           <button className="btn" onClick={() => run((c) => c.reducers.seedHouseholds({ n: 100 })).then(ok('Added 100 fake households'))}>
@@ -62,6 +65,41 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
           {stormOn ? (
             <button className="btn danger" onClick={() => run((c) => c.reducers.endStorm({})).then(ok('Storm ended'))}>End storm</button>
           ) : (
+            <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started in Richardson: alerts sent to every team phone'))}>Start storm</button>
+          )}
+          <p className="meta">
+            Team phones join by texting JOIN to the Photon number. Joined now: {households.filter((h) => h.real).length}
+          </p>
+          {onInject && <button className="btn" onClick={onInject}>Inject 2,000 reports</button>}
+          {isAdmin && (
+            <>
+              <p className="meta">Dominic only:</p>
+              <input className="devinput" placeholder="Teammate's Dev id" value={newMate} onChange={(e) => setNewMate(e.target.value)} />
+              <button
+                className="btn"
+                onClick={() => run((c) => c.reducers.addTeammate({ identityHex: newMate })).then((done) => { if (done) { toast('Teammate added', true); setNewMate(''); } })}
+              >
+                Add teammate ({teammates.length})
+              </button>
+              {sureResetPhones ? (
+                <button className="btn danger solid" onClick={() => { setSureResetPhones(false); void run((c) => c.reducers.resetTeamPhones({})).then(ok('Team phones reset: text JOIN again')); }}>
+                  Really forget all team phones?
+                </button>
+              ) : (
+                <button className="btn danger" onClick={() => setSureResetPhones(true)}>Reset team phones</button>
+              )}
+              <button className="btn danger" onClick={onAskReset}>Reset demo</button>
+              {sureClear ? (
+                <button className="btn danger solid" onClick={() => { setSureClear(false); void run((c) => c.reducers.clearHouseholds({})).then(ok('Households cleared')); }}>
+                  Really delete all households?
+                </button>
+              ) : (
+                <button className="btn danger" onClick={() => setSureClear(true)}>Clear households</button>
+              )}
+            </>
+          )}
+        </>
+      ) : (
             <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started in Richardson: alerts sent to every team phone'))}>Start storm</button>
           )}
           <p className="meta">
@@ -86,7 +124,7 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
         </>
       ) : (
         <>
-          <p className="meta">Not an admin. Send Dominic this id:</p>
+          <p className="meta">Not a teammate yet. Send Dominic this id:</p>
           <code className="devid">{me || 'connecting…'}</code>
         </>
       )}

@@ -104,6 +104,14 @@ const admin = table(
   }
 );
 
+/** Teammates: can run storms, seed and inject from Dev tools. Only admins (Dominic) can reset or wipe. */
+const teammate = table(
+  { name: 'teammate', public: true },
+  {
+    identityHex: t.string().primaryKey(),
+  }
+);
+
 // ---------- Storm check-ins (docs/checkin-plan.md) ----------
 // People we watch over. Fake ones (real=false, platform "synthetic") are never texted or called;
 // the tick plays their replies. Real ones are team phones that texted the line once.
@@ -157,7 +165,7 @@ const checkin = table(
   }
 );
 
-const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin, household, storm, checkin });
+const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin, teammate, household, storm, checkin });
 export default spacetimedb;
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
@@ -448,6 +456,32 @@ function requireAdmin(ctx: Ctx, what: string) {
   }
 }
 
+/** Teammates and admins: storms, seeding, injecting. */
+function requireTeammate(ctx: Ctx, what: string) {
+  const me = ctx.sender.toHexString();
+  if (me !== OWNER_HEX && !ctx.db.admin.identityHex.find(me) && !ctx.db.teammate.identityHex.find(me)) {
+    throw new SenderError(`${what} is locked to teammates (send Dominic your Dev id)`);
+  }
+}
+
+const cleanHex = (s: string) => {
+  const hex = s.trim().toLowerCase().replace(/^0x/, '');
+  if (!/^[0-9a-f]{64}$/.test(hex)) throw new SenderError('not an identity (64 hex characters)');
+  return hex;
+};
+
+/** Admin (Dominic's browser) adds a teammate from Dev tools. */
+export const addTeammate = spacetimedb.reducer({ identityHex: t.string() }, (ctx, { identityHex }) => {
+  requireAdmin(ctx, 'Adding teammates');
+  const hex = cleanHex(identityHex);
+  if (!ctx.db.teammate.identityHex.find(hex)) ctx.db.teammate.insert({ identityHex: hex });
+});
+
+export const removeTeammate = spacetimedb.reducer({ identityHex: t.string() }, (ctx, { identityHex }) => {
+  requireAdmin(ctx, 'Removing teammates');
+  ctx.db.teammate.identityHex.delete(cleanHex(identityHex));
+});
+
 export const makeAdmin = spacetimedb.reducer({ identityHex: t.string() }, (ctx, { identityHex }) => {
   if (ctx.sender.toHexString() !== OWNER_HEX) throw new SenderError('only the owner can add admins');
   const hex = identityHex.trim().toLowerCase().replace(/^0x/, '');
@@ -473,7 +507,7 @@ const SAMPLES: { text: string; facts: object }[] = [
 ];
 
 export const injectLoad = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
-  requireAdmin(ctx, 'Inject');
+  requireTeammate(ctx, 'Inject');
   const count = Math.min(n, 5000);
   for (let i = 0; i < count; i++) {
     const s = SAMPLES[ctx.random.integerInRange(0, SAMPLES.length - 1)];
@@ -657,7 +691,7 @@ function tickCheckins(ctx: Ctx) {
 
 /** Admin: n fake policyholders across the cities. They already joined storm alerts. */
 export const seedHouseholds = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
-  requireAdmin(ctx, 'Seed households');
+  requireTeammate(ctx, 'Seed households');
   seedFake(ctx, n);
 });
 
@@ -685,7 +719,7 @@ function seedFake(ctx: Ctx, n: number) {
 export const enrollHousehold = spacetimedb.reducer(
   { name: t.string(), handle: t.string(), city: t.string(), platform: t.string(), spaceId: t.string(), photonSenderId: t.string() },
   (ctx, { name, handle, city, platform, spaceId, photonSenderId }) => {
-    requireAdmin(ctx, 'Enroll');
+    requireTeammate(ctx, 'Enroll');
     const clean = handle.trim();
     if (!clean) throw new SenderError('phone or handle required');
     const existing = [...ctx.db.household.handle.filter(clean)][0];
@@ -757,7 +791,7 @@ function closeStorm(ctx: Ctx, stormId: bigint) {
  * If team phones are enrolled, one of their cities is always hit so a demo phone buzzes.
  */
 export const startStorm = spacetimedb.reducer((ctx) => {
-  requireAdmin(ctx, 'Start storm');
+  requireTeammate(ctx, 'Start storm');
   const old = activeStorm(ctx);
   if (old) closeStorm(ctx, old.id);
 
@@ -811,7 +845,7 @@ export const startStorm = spacetimedb.reducer((ctx) => {
 
 /** Admin: the storm is over; stop chasing anyone still silent. */
 export const endStorm = spacetimedb.reducer((ctx) => {
-  requireAdmin(ctx, 'End storm');
+  requireTeammate(ctx, 'End storm');
   const s = activeStorm(ctx);
   if (s) closeStorm(ctx, s.id);
 });

@@ -108,6 +108,11 @@ export const Storm = __t.object("Storm", {
 });
 export type Storm = __Infer<typeof Storm>;
 
+export const Teammate = __t.object("Teammate", {
+  identityHex: __t.string(),
+});
+export type Teammate = __Infer<typeof Teammate>;
+
 export const TickTimer = __t.object("TickTimer", {
   scheduledId: __t.u64(),
   scheduledAt: __t.scheduleAt(),

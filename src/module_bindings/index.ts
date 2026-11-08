@@ -34,6 +34,7 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AddTeammateReducer from "./add_teammate_reducer";
 import CallResultReducer from "./call_result_reducer";
 import CheckinCallResultReducer from "./checkin_call_result_reducer";
 import ClaimCheckinReducer from "./claim_checkin_reducer";
@@ -48,6 +49,7 @@ import RegisterResponderReducer from "./register_responder_reducer";
 import ReleaseCheckinReducer from "./release_checkin_reducer";
 import ReleaseRequestReducer from "./release_request_reducer";
 import RemoveAdminReducer from "./remove_admin_reducer";
+import RemoveTeammateReducer from "./remove_teammate_reducer";
 import ResetDemoReducer from "./reset_demo_reducer";
 import ResetTeamPhonesReducer from "./reset_team_phones_reducer";
 import ResolveCheckinReducer from "./resolve_checkin_reducer";
@@ -71,6 +73,7 @@ import OutboxRow from "./outbox_table";
 import RequestRow from "./request_table";
 import ResponderRow from "./responder_table";
 import StormRow from "./storm_table";
+import TeammateRow from "./teammate_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -191,10 +194,22 @@ const tablesSchema = __schema({
       { name: 'storm_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, StormRow),
+  teammate: __table({
+    name: 'teammate',
+    indexes: [
+      { accessor: 'identityHex', name: 'teammate_identity_hex_idx_btree', algorithm: 'btree', columns: [
+        'identityHex',
+      ] },
+    ],
+    constraints: [
+      { name: 'teammate_identity_hex_key', constraint: 'unique', columns: ['identityHex'] },
+    ],
+  }, TeammateRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("add_teammate", AddTeammateReducer),
   __reducerSchema("call_result", CallResultReducer),
   __reducerSchema("checkin_call_result", CheckinCallResultReducer),
   __reducerSchema("claim_checkin", ClaimCheckinReducer),
@@ -209,6 +224,7 @@ const reducersSchema = __reducers(
   __reducerSchema("release_checkin", ReleaseCheckinReducer),
   __reducerSchema("release_request", ReleaseRequestReducer),
   __reducerSchema("remove_admin", RemoveAdminReducer),
+  __reducerSchema("remove_teammate", RemoveTeammateReducer),
   __reducerSchema("reset_demo", ResetDemoReducer),
   __reducerSchema("reset_team_phones", ResetTeamPhonesReducer),
   __reducerSchema("resolve_checkin", ResolveCheckinReducer),
