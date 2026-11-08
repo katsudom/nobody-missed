@@ -333,3 +333,44 @@ a.btn { text-decoration: none; display: inline-block; }
 
 /* Moving city background; the still image on body shows if this can't run */
 .bgmotion { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
+
+/* ---- page tabs + disasters map ---- */
+a.tab { text-decoration: none; }
+.pagetabs { align-self: center; margin-left: 12px; }
+.dzbar { margin-bottom: 12px; }
+.dzsearch { position: relative; flex: 1 1 260px; max-width: 420px; }
+.dzsearch input { font-size: var(--fs-md); padding: 8px 12px; }
+.dzsearch input:focus-visible { outline: 3px solid #6fe3ff; outline-offset: 2px; }
+.dzsearch input:disabled { color: var(--muted); cursor: not-allowed; }
+.dzplaces { position: absolute; z-index: 10; top: calc(100% + 6px); left: 0; right: 0; margin: 0; padding: 6px; list-style: none; background: var(--card); border: 1px solid #43358a; border-radius: 10px; box-shadow: 0 8px 24px #0009; }
+.dzplaces li { display: flex; flex-direction: column; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.dzplaces li.on { background: #2f2360; }
+.dzplaces span { color: var(--muted); font-size: var(--fs-sm); }
+.dzerror { margin: 6px 0 0; color: #ff9dbb; font-size: var(--fs-sm); }
+.dzframe { position: relative; height: clamp(380px, 68vh, 860px); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--bg); }
+/* .dzframe outranks .mapboxgl-map's position: relative, which collapses the map.
+   zoom cancels html { zoom: .9 }: Mapbox sizes its canvas and reads clicks wrongly under page zoom. */
+.dzframe .dzcanvas { position: absolute; inset: 0; zoom: calc(1 / .9); }
+.dzcover { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; padding: 28px; text-align: center; color: var(--muted); background: var(--bg); }
+.dzcover b { color: var(--text); font-size: var(--fs-lg); }
+.dzlegend { position: absolute; top: 12px; left: 12px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 12px; font-size: var(--fs-xs); color: var(--text); background: #150e33e6; border: 1px solid var(--line); border-radius: 999px; }
+.dzlegend .dot { width: 8px; height: 8px; margin-right: 6px; }
+.dzalerts { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; max-height: clamp(380px, 68vh, 860px); overflow-y: auto; }
+.dzrow { flex: none; font: inherit; color: inherit; text-align: left; display: flex; flex-direction: column; gap: 2px; min-height: 44px; padding: 12px 10px; background: transparent; border: 0; border-top: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.dzrow:first-child { border-top: 0; }
+.dzrow:hover { background: #211748; }
+.dzrow.on { outline: 1.5px solid #6a55c2; outline-offset: -1.5px; background: #211748; }
+.dzrow:focus-visible { outline: 3px solid #6fe3ff; outline-offset: -3px; }
+.dzevent { font-weight: 700; }
+.dzarea { color: #d8d0f2; font-size: var(--fs-sm); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mapboxgl-ctrl-group { background: var(--card); border: 1px solid #43358a; }
+.mapboxgl-ctrl-group button + button { border-top-color: var(--line); }
+.mapboxgl-ctrl-group button .mapboxgl-ctrl-icon { filter: invert(1); }
+.mapboxgl-ctrl-group button:focus-visible { outline: 3px solid #6fe3ff; }
+.mapboxgl-ctrl-attrib.mapboxgl-compact, .mapboxgl-ctrl-attrib { background: #150e33cc; }
+.mapboxgl-ctrl-attrib a { color: var(--muted); }
+@media (max-width: 600px) {
+  .board:has(.dzframe) { padding: 16px; }
+  .pagetabs { margin-left: 0; }
+  .dzsearch { max-width: none; flex-basis: 100%; }
+}
