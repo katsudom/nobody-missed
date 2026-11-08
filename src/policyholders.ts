@@ -78,9 +78,3 @@ export function personFor(r: { id: bigint; victimHandle: string; rawText: string
   const policyNo = `SF-${String(1000000 + (hash(h.handle) % 9000000))}`;
   return { name: h.name, age: h.age, address: h.address, policy: h.policy, policyNo, issue: issue.label };
 }
-
-// Stable fake map position (0..1) for a request.
-export function mapPos(id: bigint): [number, number] {
-  const a = hash(`x${id}`), b = hash(`y${id}`);
-  return [(a % 10000) / 10000, (b % 10000) / 10000];
-}

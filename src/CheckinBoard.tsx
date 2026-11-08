@@ -19,20 +19,19 @@ type Request = Infer<typeof RequestRowT>;
 const MAX_ROWS = 200;
 // Mirrors spacetimedb/src/rules.ts (S1_RETEXT, S2_CALL, S3_URGENT in demo seconds). Display only.
 const NEXT_STEP_MS: Record<string, { ms: number; label: string }> = {
-  texted: { ms: 15_000, label: 're-text in' },
-  retexted: { ms: 10_000, label: 'call in' },
-  called: { ms: 10_000, label: 'urgent in' },
+  texted: { ms: 15_000, label: 'Re-text in' },
+  retexted: { ms: 10_000, label: 'Call in' },
+  called: { ms: 10_000, label: 'Urgent in' },
 };
 
 type Bucket = 'urgent' | 'help' | 'waiting' | 'safe' | 'handled';
 const BUCKETS: { key: Bucket; label: string; color: string }[] = [
   { key: 'urgent', label: 'Urgent: no contact', color: 'var(--red)' },
   { key: 'help', label: 'Needs help', color: 'var(--amber)' },
-  { key: 'waiting', label: 'Waiting for reply', color: 'var(--grey)' },
+  { key: 'waiting', label: 'No reply yet', color: 'var(--grey)' },
   { key: 'safe', label: 'Checked in safe', color: 'var(--green)' },
   { key: 'handled', label: 'Responder on it', color: 'var(--blue)' },
 ];
-const COLOR = Object.fromEntries(BUCKETS.map((b) => [b.key, b.color])) as Record<Bucket, string>;
 
 function bucketOf(c: Checkin): Bucket {
   switch (c.state) {
@@ -40,8 +39,8 @@ function bucketOf(c: Checkin): Bucket {
     case 'needs_help': return 'help';
     case 'safe': return 'safe';
     case 'claimed':
-    case 'closed': return 'handled';
-    default: return 'waiting';
+    case 'closed': return 'handled'; // closed only happens when a responder resolves it
+    default: return 'waiting'; // texted, retexted, called, and no_reply (storm ended first)
   }
 }
 
@@ -53,13 +52,15 @@ const STATE_LABEL: Record<string, string> = {
   needs_help: 'Needs help',
   urgent: 'Urgent',
   claimed: 'Claimed',
-  closed: 'Closed',
+  closed: 'Resolved',
+  no_reply: 'No reply',
 };
 
-const LADDER = ['texted', 'retexted', 'called', 'urgent'];
+const STEPS = ['Alert sent', 'Re-texted', 'Called', 'Urgent'];
+const STEP_OF: Record<string, number> = { texted: 0, retexted: 1, called: 2, urgent: 3 };
 
 export default function CheckinBoard() {
-  const { identity } = useSpacetimeDB();
+  const { identity, isActive } = useSpacetimeDB();
   const run = useRun();
   const toast = useToast();
   const now = useNow();
@@ -85,24 +86,35 @@ export default function CheckinBoard() {
     const tab: Bucket | 'all' = picked ?? (['urgent', 'help', 'waiting'] as Bucket[]).find((b) => k[b] > 0) ?? 'all';
     const shown = tab === 'all' ? [...list] : list.filter((c) => bucketOf(c) === tab);
     const score = (c: Checkin) => reqs.get(c.requestId)?.score ?? 0;
+    const order = ['urgent', 'needs_help', 'called', 'retexted', 'texted', 'no_reply', 'claimed', 'closed', 'safe'];
     shown.sort((a, b) => {
       if (tab === 'help') return score(b) - score(a);
       if (tab === 'safe' || tab === 'handled') return a.updatedAt.microsSinceUnixEpoch < b.updatedAt.microsSinceUnixEpoch ? 1 : -1;
       // urgent / waiting / all: furthest along the ladder first, then longest waiting
-      const order = ['urgent', 'needs_help', 'called', 'retexted', 'texted', 'claimed', 'safe', 'closed'];
       return order.indexOf(a.state) - order.indexOf(b.state) ||
         (a.updatedAt.microsSinceUnixEpoch < b.updatedAt.microsSinceUnixEpoch ? -1 : 1);
     });
     return { mine: list, counts: k, rows: shown.slice(0, MAX_ROWS), tab };
   }, [checkins, storm, picked, reqs]);
 
+  const cityStats = useMemo(() => {
+    const m = new Map<string, Record<Bucket, number> & { total: number }>();
+    for (const c of mine) {
+      const city = hh.get(c.householdId)?.city ?? 'Unknown';
+      const s = m.get(city) ?? { urgent: 0, help: 0, waiting: 0, safe: 0, handled: 0, total: 0 };
+      s[bucketOf(c)]++;
+      s.total++;
+      m.set(city, s);
+    }
+    return [...m.entries()].sort((a, b) => b[1].urgent - a[1].urgent || b[1].total - a[1].total);
+  }, [mine, hh]);
+
   const total = mine.length;
-  const replied = mine.filter((c) => c.reply !== '' || c.state === 'safe' || c.state === 'needs_help').length;
+  const replied = mine.filter((c) => c.reply !== '').length;
   const pct = total ? Math.round((counts.safe / total) * 100) : 0;
   const shownTotal = tab === 'all' ? total : counts[tab];
 
   const selectedC = (selected !== null ? mine.find((c) => c.id === selected) : undefined) ?? rows[0];
-  const byHousehold = useMemo(() => new Map(mine.map((c) => [c.householdId, c])), [mine]);
   const meHex = identity?.toHexString();
 
   const claim = (id: bigint) => run((c) => c.reducers.claimCheckin({ checkinId: id }));
@@ -121,18 +133,22 @@ export default function CheckinBoard() {
           <h1>Check-In Command Center</h1>
         </div>
         <span className="spacer" />
+        <span className={`live ${isActive ? 'on' : ''}`} role="status">{isActive ? 'Live' : 'Reconnecting…'}</span>
         <StormChip storm={storm} now={now} inZone={total} />
         <a className="btn" href="#/reports">Reports board</a>
       </header>
 
-      <section className="card summary">
+      <section className="card summary" aria-label="Storm check-in progress">
         <div className="sumtop">
           <div>
-            <span className="eyebrow">Checked in</span> <span className="pct">{pct}%</span>
+            <span className="eyebrow">Checked in safe</span> <span className="pct">{pct}%</span>
           </div>
-          <div className="meta">{replied.toLocaleString()} of {total.toLocaleString()} households in the zone have replied · {households.length.toLocaleString()} households on file</div>
+          <div className="meta">
+            {replied.toLocaleString()} of {total.toLocaleString()} alerted households have replied
+            {storm ? ` · ${storm.cities}` : ''}
+          </div>
         </div>
-        <div className="stack">
+        <div className="stack" aria-hidden="true">
           {BUCKETS.map((b) => counts[b.key] > 0 && <i key={b.key} style={{ flex: counts[b.key], background: b.color }} />)}
         </div>
         <div className="legend">
@@ -145,20 +161,27 @@ export default function CheckinBoard() {
       <div className="cols">
         <section className="card queue">
           <div className="qhead">
-            <h2>Households in the zone</h2>
-            <div className="tabs">
+            <h2>Households in the storm</h2>
+            <div className="tabs" role="tablist" aria-label="Filter households">
               {BUCKETS.map((b) => (
-                <button key={b.key} className={`tab ${tab === b.key ? 'on' : ''}`} onClick={() => setTab(b.key)}>
+                <button key={b.key} role="tab" aria-selected={tab === b.key} className={`tab ${tab === b.key ? 'on' : ''}`} onClick={() => setTab(b.key)}>
                   <b className="dot" style={{ background: b.color }} />{b.label} <span>{counts[b.key].toLocaleString()}</span>
                 </button>
               ))}
-              <button className={`tab ${tab === 'all' ? 'on' : ''}`} onClick={() => setTab('all')}>All <span>{total.toLocaleString()}</span></button>
+              <button role="tab" aria-selected={tab === 'all'} className={`tab ${tab === 'all' ? 'on' : ''}`} onClick={() => setTab('all')}>
+                All <span>{total.toLocaleString()}</span>
+              </button>
             </div>
           </div>
-          <div className="list">
+          <div className="list" role="tabpanel">
             {!ready && <p className="empty">Loading…</p>}
-            {ready && !storm && <p className="empty">No storm yet. An admin starts one from the Dev panel.</p>}
-            {ready && storm && rows.length === 0 && <p className="empty">Nobody here.</p>}
+            {ready && !storm && (
+              <div className="emptybox">
+                <b>No storm yet.</b>
+                <span>{households.length.toLocaleString()} households have joined storm alerts. An admin starts a storm from the Dev panel (bottom right).</span>
+              </div>
+            )}
+            {ready && storm && rows.length === 0 && <p className="empty">Nobody in this group.</p>}
             {rows.map((c) => (
               <CheckinRow
                 key={c.id.toString()}
@@ -180,12 +203,28 @@ export default function CheckinBoard() {
         </section>
 
         <div className="side">
-          <section className="card mapcard">
-            <div className="mapnote">
-              {households.length.toLocaleString()} households · {storm?.active ? 'storm zone in red' : 'no active storm'} · positions simulated
-            </div>
-            <StormMap households={households} storm={storm} byHousehold={byHousehold} selected={selectedC} onPick={setSelected} />
-          </section>
+          {cityStats.length > 0 && (
+            <section className="card cities" aria-label="Check-ins by city">
+              <h3>By city</h3>
+              {cityStats.map(([city, s]) => (
+                <div key={city} className="city">
+                  <div className="cityhead">
+                    <b>{city}</b>
+                    <span className="meta">{Math.round((s.safe / s.total) * 100)}% safe · {s.total} homes</span>
+                  </div>
+                  <div className="stack small" aria-hidden="true">
+                    {BUCKETS.map((b) => s[b.key] > 0 && <i key={b.key} style={{ flex: s[b.key], background: b.color }} />)}
+                  </div>
+                  {(s.urgent > 0 || s.help > 0) && (
+                    <div className="citynote">
+                      {s.urgent > 0 && <span className="u">{s.urgent} urgent</span>}
+                      {s.help > 0 && <span className="h">{s.help} need help</span>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </section>
+          )}
           {selectedC && (
             <CheckinDetail
               c={selectedC}
@@ -206,7 +245,7 @@ export default function CheckinBoard() {
 
       {confirmReset && (
         <div className="modal" onClick={() => setConfirmReset(false)}>
-          <div className="modalbox" onClick={(e) => e.stopPropagation()}>
+          <div className="modalbox" role="dialog" aria-modal="true" aria-label="Reset the demo" onClick={(e) => e.stopPropagation()}>
             <h2>Reset the demo?</h2>
             <p className="meta">Deletes every storm, check-in, request and call in the SHARED database for everyone. Households stay.</p>
             <div className="actions">
@@ -222,10 +261,9 @@ export default function CheckinBoard() {
 
 function StormChip({ storm, now, inZone }: { storm?: Storm; now: number; inZone: number }) {
   if (!storm) return <span className="simtag">No storm</span>;
-  const since = mmss(now - tsMs(storm.startedAt));
   return storm.active
-    ? <span className="stormchip on">Storm active · {inZone.toLocaleString()} in zone · {since}</span>
-    : <span className="simtag">Last storm ended</span>;
+    ? <span className="stormchip on">Storm active · {inZone.toLocaleString()} homes · {mmss(now - tsMs(storm.startedAt))}</span>
+    : <span className="simtag">Storm ended</span>;
 }
 
 function nextStep(c: Checkin, now: number) {
@@ -240,20 +278,28 @@ type RowProps = {
   onOpen: (id: bigint) => void; onClaim: (id: bigint) => void; onRelease: (id: bigint) => void; onResolve: (id: bigint) => void;
 };
 
+const canClaim = (c: Checkin) => !c.claimedBy && ['urgent', 'needs_help', 'texted', 'retexted', 'called', 'no_reply'].includes(c.state);
+const canResolve = (c: Checkin, mine: boolean) => c.state === 'urgent' || c.state === 'needs_help' || c.state === 'no_reply' || mine;
+
 const CheckinRow = memo(function CheckinRow({ c, h, req, now, claimer, mine, selected, onOpen, onClaim, onRelease, onResolve }: RowProps) {
   const b = bucketOf(c);
   const stop = (fn: (id: bigint) => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn(c.id); };
-  const waitedFor = mmss(now - tsMs(c.createdAt));
   return (
-    <div className={`row crow ${b === 'urgent' ? 'flagged' : ''} ${selected ? 'selected' : ''}`} onClick={() => onOpen(c.id)}>
+    <div
+      className={`row crow ${b === 'urgent' ? 'flagged' : ''} ${selected ? 'selected' : ''}`}
+      onClick={() => onOpen(c.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter') onOpen(c.id); }}
+      tabIndex={0}
+      aria-label={`${h?.name ?? 'Household'}: ${STATE_LABEL[c.state] ?? c.state}`}
+    >
       <div className="status">
         <span className={`pill b-${b}`}>{STATE_LABEL[c.state] ?? c.state}</span>
-        <span className="timer">{nextStep(c, now) || `since alert ${waitedFor}`}</span>
+        <span className="timer">{nextStep(c, now) || `${mmss(now - tsMs(c.createdAt))} since alert`}</span>
       </div>
       <div className="main">
         <div className="name">{h?.name ?? 'Unknown household'}{h?.real && <span className="realtag">team phone</span>}</div>
         <div className="text">
-          {req ? req.rawText.split('\n')[0] : h ? `${h.address}${h.age ? ` · age ${h.age}` : ''}` : ''}
+          {req ? req.rawText.split('\n')[0] : h ? `${h.address}, ${h.city}${h.age ? ` · age ${h.age}` : ''}` : ''}
         </div>
         <div className="sub">
           <span className="reason">{c.textsSent} text{c.textsSent === 1 ? '' : 's'}</span>
@@ -264,11 +310,9 @@ const CheckinRow = memo(function CheckinRow({ c, h, req, now, claimer, mine, sel
       <span className={`score ${req ? `tier-${req.tier}` : ''}`}>{req ? req.score : ''}</span>
       <div className="actions">
         {c.claimedBy && <span className="onway">{claimer} is on it</span>}
-        {!c.claimedBy && (b === 'urgent' || b === 'help' || b === 'waiting') && (
-          <button className="btn outline" onClick={stop(onClaim)}>Claim</button>
-        )}
+        {canClaim(c) && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
         {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
-        {(b === 'urgent' || b === 'help' || mine) && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
+        {canResolve(c, mine) && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
       </div>
     </div>
   );
@@ -278,7 +322,7 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
   const [outbox] = useTable(tables.outbox);
   const [calls] = useTable(tables.call);
   const b = bucketOf(c);
-  const reached = LADDER.indexOf(c.state);
+  const step = STEP_OF[c.state];
   const quotes = req ? parseQuotes(req.facts) : [];
   const reasons = req ? parseReasons(req.reasons) : [];
 
@@ -287,28 +331,37 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
     ...calls.filter((x) => x.checkinId === c.id).map((x) => ({ at: tsMs(x.createdAt), text: `Call ${x.result}${x.dtmf ? `, pressed ${x.dtmf}` : ''}` })),
   ].sort((a, z) => a.at - z.at), [outbox, calls, c.id]);
 
+  const status =
+    nextStep(c, now) ||
+    (b === 'safe' ? 'Checked in. No more texts.'
+      : c.state === 'no_reply' ? 'The storm ended before they answered. Still unaccounted for.'
+      : c.state === 'closed' ? 'Resolved by a responder.'
+      : c.claimedBy ? `${claimer || 'A responder'} is on it.`
+      : b === 'urgent' ? 'Texted twice and called. No answer: send someone.'
+      : '');
+
   return (
-    <aside className="card detail">
+    <aside className="card detail" aria-label="Household details">
       <div className="dhead">
         <div>
           <h2>{h?.name ?? 'Unknown household'}</h2>
-          {h && <div className="meta">{h.age ? `Age ${h.age} · ` : ''}{h.address}</div>}
+          {h && <div className="meta">{h.age ? `Age ${h.age} · ` : ''}{h.address}, {h.city}</div>}
           {h && <div className="meta">{h.policy} policy · {h.real ? h.handle : 'simulated household'}</div>}
         </div>
         <div className="urgency">
-          <span className={`big ${req ? `tier-${req.tier}` : ''}`} style={req ? undefined : { color: COLOR[b] }}>{req ? req.score : STATE_LABEL[c.state]}</span>
+          <span className={`big ${req ? `tier-${req.tier}` : `c-${b}`}`}>{req ? req.score : STATE_LABEL[c.state]}</span>
           <span className="l">{req ? 'Urgency' : 'Status'}</span>
         </div>
       </div>
 
-      <ol className="ladder2">
-        {['Alert sent', 'Re-texted', 'Called', 'Urgent'].map((label, i) => (
-          <li key={label} className={reached >= i ? (i === 3 ? 'bad' : 'done') : ''}>{label}</li>
-        ))}
-      </ol>
-      <div className="meta">
-        {nextStep(c, now) || (b === 'safe' ? 'Checked in. No more texts.' : b === 'handled' ? `${claimer || 'A responder'} is on it.` : '')}
-      </div>
+      {step !== undefined && (
+        <ol className="ladder2" aria-label={`Step ${step + 1} of 4: ${STEPS[step]}`}>
+          {STEPS.map((label, i) => (
+            <li key={label} className={step >= i ? (i === 3 ? 'bad' : 'done') : ''} aria-current={step === i ? 'step' : undefined}>{label}</li>
+          ))}
+        </ol>
+      )}
+      {status && <div className="meta statusline">{status}</div>}
 
       {c.reply && (
         <>
@@ -326,9 +379,9 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
       )}
 
       <div className="dactions">
-        {!c.claimedBy && b !== 'safe' && b !== 'handled' && <button className="btn big primary" onClick={() => onClaim(c.id)}>Claim</button>}
+        {canClaim(c) && <button className="btn big primary" onClick={() => onClaim(c.id)}>Claim</button>}
         {mine && <button className="btn big" onClick={() => onRelease(c.id)}>Release</button>}
-        {(b === 'urgent' || b === 'help' || mine) && <button className="btn big" onClick={() => onResolve(c.id)}>Resolve</button>}
+        {canResolve(c, mine) && <button className="btn big" onClick={() => onResolve(c.id)}>Resolve</button>}
       </div>
 
       <h3>Texts and calls · {c.textsSent} texts · {c.callsPlaced} calls</h3>
@@ -339,38 +392,3 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
     </aside>
   );
 }
-
-// ---------- Map ----------
-const W = 420, H = 300;
-
-const StormMap = memo(function StormMap({ households, storm, byHousehold, selected, onPick }: {
-  households: readonly Household[]; storm?: Storm; byHousehold: Map<bigint, Checkin>; selected?: Checkin; onPick: (id: bigint) => void;
-}) {
-  const sel = selected ? households.find((h) => h.id === selected.householdId) : undefined;
-  return (
-    <svg className="map" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Map of households and the storm zone">
-      <defs>
-        <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
-          <path d="M28 0H0V28" fill="none" stroke="#1d1d21" strokeWidth="1" />
-        </pattern>
-      </defs>
-      <rect width={W} height={H} fill="url(#grid)" />
-      <path d="M0 170 C 90 140, 150 210, 230 170 S 360 150, 420 180" fill="none" stroke="#1b2740" strokeWidth="14" />
-      {storm?.active && (
-        // The server's zone is a circle in 0..1 map units, so on this wide map it is an ellipse.
-        <ellipse cx={storm.cx * W} cy={storm.cy * H} rx={storm.r * W} ry={storm.r * H}
-          fill="#ff4d5e14" stroke="#ff4d5e" strokeDasharray="6 5" />
-      )}
-      {households.map((h) => {
-        const c = byHousehold.get(h.id);
-        const color = c ? COLOR[bucketOf(c)] : '#3a3a42';
-        return (
-          <circle key={h.id.toString()} cx={h.x * W} cy={h.y * H} r={h.real ? 5 : c ? 2.6 : 1.8} fill={color}
-            stroke={h.real ? '#fff' : undefined} strokeWidth={h.real ? 1.5 : undefined}
-            onClick={c ? () => onPick(c.id) : undefined} style={c ? { cursor: 'pointer' } : undefined} />
-        );
-      })}
-      {sel && <circle cx={sel.x * W} cy={sel.y * H} r="10" fill="none" stroke="#fff" strokeWidth="2" />}
-    </svg>
-  );
-});

@@ -191,7 +191,8 @@ export type CheckinState =
   | 'needs_help' // replied 2 or anything else / pressed 2
   | 'urgent' // no contact after text, re-text and call
   | 'claimed'
-  | 'closed';
+  | 'closed' // a responder resolved it
+  | 'no_reply'; // the storm ended before they ever answered: still unaccounted for
 
 export const AWAITING: CheckinState[] = ['texted', 'retexted', 'called'];
 
@@ -227,8 +228,3 @@ export function checkinAfterCall(result: string, dtmf: string): CheckinState {
   return d === '1' ? 'safe' : d === '2' ? 'needs_help' : 'urgent';
 }
 
-/** Point-in-circle on the 0..1 map. */
-export function inZone(x: number, y: number, cx: number, cy: number, r: number): boolean {
-  const dx = x - cx, dy = y - cy;
-  return dx * dx + dy * dy <= r * r;
-}

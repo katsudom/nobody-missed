@@ -18,7 +18,6 @@ import {
   checkinAfterCall,
   checkinAfterReply,
   decideCheckin,
-  inZone,
 } from './rules.ts';
 
 // ---------- Tables (SPEC §4) ----------
@@ -115,9 +114,8 @@ const household = table(
     platform: t.string(),
     spaceId: t.string(),
     photonSenderId: t.string(),
-    x: t.f64(), // map position 0..1
-    y: t.f64(),
-    address: t.string(),
+    address: t.string(), // street line
+    city: t.string().index('btree'), // a storm hits whole cities
     age: t.u32(),
     policy: t.string(),
     real: t.bool(),
@@ -128,9 +126,7 @@ const storm = table(
   { name: 'storm', public: true },
   {
     id: t.u64().primaryKey().autoInc(),
-    cx: t.f64(),
-    cy: t.f64(),
-    r: t.f64(),
+    cities: t.string(), // affected cities, comma separated, e.g. "Plano, Garland"
     startedAt: t.timestamp(),
     active: t.bool(),
   }
@@ -146,7 +142,7 @@ const checkin = table(
     id: t.u64().primaryKey().autoInc(),
     stormId: t.u64().index('btree'),
     householdId: t.u64().index('btree'),
-    state: t.string(), // texted | retexted | called | safe | needs_help | urgent | claimed | closed
+    state: t.string(), // texted | retexted | called | safe | needs_help | urgent | claimed | closed | no_reply
     textsSent: t.u32(),
     callsPlaced: t.u32(),
     reply: t.string(), // what they said, if anything
@@ -638,7 +634,7 @@ function tickCheckins(ctx: Ctx) {
   }
 }
 
-/** Admin: spread n fake policyholders over the map. */
+/** Admin: n fake policyholders across the cities. They already joined storm alerts. */
 export const seedHouseholds = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
   requireAdmin(ctx, 'Seed households');
   const count = Math.min(n, 5000);
@@ -651,9 +647,8 @@ export const seedHouseholds = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) =
       platform: 'synthetic',
       spaceId: '',
       photonSenderId: '',
-      x: 0.03 + ctx.random() * 0.94,
-      y: 0.03 + ctx.random() * 0.94,
-      address: `${ctx.random.integerInRange(100, 9999)} ${pick(ctx, STREETS)}, ${pick(ctx, CITIES)}`,
+      address: `${ctx.random.integerInRange(100, 9999)} ${pick(ctx, STREETS)}`,
+      city: pick(ctx, CITIES),
       age: ctx.random.integerInRange(19, 94),
       policy: pick(ctx, POLICIES),
       real: false,
@@ -661,16 +656,18 @@ export const seedHouseholds = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) =
   }
 });
 
-/** Admin (or the bridge, once it is an admin): a real phone that texted the line once. Same handle updates it. */
+/** Admin (or the bridge, once it is an admin): a real phone that joined storm alerts. Same handle updates it. */
 export const enrollHousehold = spacetimedb.reducer(
-  { name: t.string(), handle: t.string(), platform: t.string(), spaceId: t.string(), photonSenderId: t.string() },
-  (ctx, { name, handle, platform, spaceId, photonSenderId }) => {
+  { name: t.string(), handle: t.string(), city: t.string(), platform: t.string(), spaceId: t.string(), photonSenderId: t.string() },
+  (ctx, { name, handle, city, platform, spaceId, photonSenderId }) => {
     requireAdmin(ctx, 'Enroll');
     const clean = handle.trim();
     if (!clean) throw new SenderError('phone or handle required');
     const existing = [...ctx.db.household.handle.filter(clean)][0];
     if (existing) {
-      ctx.db.household.id.update({ ...existing, name: name.trim() || existing.name, platform, spaceId, photonSenderId, real: true });
+      ctx.db.household.id.update({
+        ...existing, name: name.trim() || existing.name, city: city.trim() || existing.city, platform, spaceId, photonSenderId, real: true,
+      });
       return;
     }
     ctx.db.household.insert({
@@ -680,9 +677,8 @@ export const enrollHousehold = spacetimedb.reducer(
       platform,
       spaceId,
       photonSenderId,
-      x: 0.2 + ctx.random() * 0.6,
-      y: 0.2 + ctx.random() * 0.6,
       address: 'Team phone',
+      city: city.trim() || pick(ctx, CITIES),
       age: 0,
       policy: 'Home',
       real: true,
@@ -704,15 +700,15 @@ function closeStorm(ctx: Ctx, stormId: bigint) {
   for (const c of [...ctx.db.checkin.stormId.filter(stormId)]) {
     cancelCheckinOutbox(ctx, c.id); // nothing from an ended storm goes out later
     if (isAwaiting(c.state)) {
-      setCheckin(ctx, c, 'closed');
+      setCheckin(ctx, c, 'no_reply'); // not "closed": nobody has reached them
       ctx.db.checkin.id.update(c);
     }
   }
 }
 
 /**
- * Admin: a storm hits a random circle of the map and everyone inside gets the alert.
- * If team phones are enrolled, the storm is centred near one of them so a demo phone buzzes.
+ * Admin: a storm hits 2–3 random cities and everyone who lives there gets the alert.
+ * If team phones are enrolled, one of their cities is always hit so a demo phone buzzes.
  */
 export const startStorm = spacetimedb.reducer((ctx) => {
   requireAdmin(ctx, 'Start storm');
@@ -721,20 +717,17 @@ export const startStorm = spacetimedb.reducer((ctx) => {
 
   const all = [...ctx.db.household.iter()];
   if (all.length === 0) throw new SenderError('no households yet: seed some first');
+  const cities = [...new Set(all.map((h) => h.city))];
+  const hit = new Set<string>();
   const real = all.filter((h) => h.real);
-  const r = 0.16 + ctx.random() * 0.1;
-  let cx = 0.25 + ctx.random() * 0.5;
-  let cy = 0.25 + ctx.random() * 0.5;
-  if (real.length) {
-    const anchor = pick(ctx, real);
-    cx = Math.min(0.85, Math.max(0.15, anchor.x + (ctx.random() - 0.5) * r));
-    cy = Math.min(0.85, Math.max(0.15, anchor.y + (ctx.random() - 0.5) * r));
-  }
-  const s = ctx.db.storm.insert({ id: 0n, cx, cy, r, startedAt: ctx.timestamp, active: true });
+  if (real.length) hit.add(pick(ctx, real).city);
+  const want = Math.min(cities.length, ctx.random.integerInRange(2, 3));
+  while (hit.size < want) hit.add(pick(ctx, cities));
+  const s = ctx.db.storm.insert({ id: 0n, cities: [...hit].join(', '), startedAt: ctx.timestamp, active: true });
 
   const t0 = now(ctx);
   for (const h of all) {
-    if (!inZone(h.x, h.y, cx, cy, r)) continue;
+    if (!hit.has(h.city)) continue;
     let simFate = '';
     let replyIn = 0n;
     if (!h.real) {

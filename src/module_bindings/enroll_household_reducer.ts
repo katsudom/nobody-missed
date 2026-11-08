@@ -13,6 +13,7 @@ import {
 export default {
   name: __t.string(),
   handle: __t.string(),
+  city: __t.string(),
   platform: __t.string(),
   spaceId: __t.string(),
   photonSenderId: __t.string(),

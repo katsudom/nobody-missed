@@ -12,9 +12,7 @@ import {
 
 export default __t.row({
   id: __t.u64().primaryKey(),
-  cx: __t.f64(),
-  cy: __t.f64(),
-  r: __t.f64(),
+  cities: __t.string(),
   startedAt: __t.timestamp().name("started_at"),
   active: __t.bool(),
 });

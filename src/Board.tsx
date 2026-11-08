@@ -8,7 +8,6 @@ import {
   Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
 } from './lib';
 import { personFor } from './policyholders';
-import ImpactMap from './ImpactMap';
 import { CaseFacts, CheckinLog, EscalationLadder } from './board/Drawer';
 
 type Request = Infer<typeof RequestRow>;
@@ -22,7 +21,6 @@ const CATS: { key: Cat; label: string; color: string }[] = [
   { key: 'claimed', label: 'Claimed', color: 'var(--blue)' },
   { key: 'safe', label: 'Safe', color: 'var(--green)' },
 ];
-const CAT_COLOR = Object.fromEntries(CATS.map((c) => [c.key, c.color])) as Record<Cat, string>;
 
 function catOf(r: Request): Cat {
   if (r.state === 'closed') return 'safe';
@@ -170,11 +168,6 @@ export default function Board() {
   const selectedReq =
     (selected !== null ? requests.find((r) => r.id === selected) : undefined) ?? top[0];
 
-  const dots = useMemo(
-    () => top.map((r) => ({ id: r.id, color: CAT_COLOR[catOf(r)], big: r.tier === 'critical' })),
-    [top]
-  );
-
   const handled = total ? Math.round(((counts.claimed + counts.safe) / total) * 100) : 0;
 
   return (
@@ -247,10 +240,6 @@ export default function Board() {
         </section>
 
         <div className="side">
-          <section className="card mapcard">
-            <div className="mapnote">Impact zone · {total.toLocaleString()} households · positions simulated</div>
-            <ImpactMap dots={dots} selectedId={selectedReq?.id} onPick={setSelected} />
-          </section>
           {selectedReq && (
             <Detail
               r={selectedReq}

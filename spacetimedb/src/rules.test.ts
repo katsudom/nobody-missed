@@ -120,7 +120,6 @@ import {
   decideCheckin,
   checkinAfterReply,
   checkinAfterCall,
-  inZone,
   S1_RETEXT,
   S2_CALL,
   S3_URGENT,
@@ -142,7 +141,7 @@ test('check-in call: ringing waits, no answer goes urgent', () => {
 });
 
 test('finished states never move on their own', () => {
-  for (const s of ['safe', 'needs_help', 'urgent', 'claimed', 'closed']) {
+  for (const s of ['safe', 'needs_help', 'urgent', 'claimed', 'closed', 'no_reply']) {
     assert.equal(decideCheckin(s, 10n ** 12n, null), null);
   }
 });
@@ -155,10 +154,4 @@ test('check-in replies and calls', () => {
   assert.equal(checkinAfterCall('answered', '2'), 'needs_help');
   assert.equal(checkinAfterCall('answered', ''), 'urgent');
   assert.equal(checkinAfterCall('no_answer', ''), 'urgent');
-});
-
-test('storm zone circle', () => {
-  assert.equal(inZone(0.5, 0.5, 0.5, 0.5, 0.1), true);
-  assert.equal(inZone(0.6, 0.5, 0.5, 0.5, 0.1), true);
-  assert.equal(inZone(0.61, 0.5, 0.5, 0.5, 0.1), false);
 });

@@ -123,6 +123,9 @@ const tablesSchema = __schema({
   household: __table({
     name: 'household',
     indexes: [
+      { accessor: 'city', name: 'household_city_idx_btree', algorithm: 'btree', columns: [
+        'city',
+      ] },
       { accessor: 'handle', name: 'household_handle_idx_btree', algorithm: 'btree', columns: [
         'handle',
       ] },

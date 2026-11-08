@@ -50,9 +50,8 @@ export const Household = __t.object("Household", {
   platform: __t.string(),
   spaceId: __t.string(),
   photonSenderId: __t.string(),
-  x: __t.f64(),
-  y: __t.f64(),
   address: __t.string(),
+  city: __t.string(),
   age: __t.u32(),
   policy: __t.string(),
   real: __t.bool(),
@@ -103,9 +102,7 @@ export type Responder = __Infer<typeof Responder>;
 
 export const Storm = __t.object("Storm", {
   id: __t.u64(),
-  cx: __t.f64(),
-  cy: __t.f64(),
-  r: __t.f64(),
+  cities: __t.string(),
   startedAt: __t.timestamp(),
   active: __t.bool(),
 });

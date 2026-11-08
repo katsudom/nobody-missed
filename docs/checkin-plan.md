@@ -1,6 +1,6 @@
 # Proposal: storm check-ins (we reach out, not wait for reports)
 
-Status: **draft for team review.** Nothing is built. Needs Dominic's OK because it changes `spacetimedb/` and the SPEC §1 flow.
+Status: **built on branch `wonillionaire-checkin`, tested on a local database, not published.** Dominic approved the backend change and dropping the map.
 
 ## Why
 
@@ -8,8 +8,8 @@ The pitch is "we chase the people who stop answering", but the board today only 
 
 ## The flow
 
-1. **Households exist before the storm.** Fake policyholders are spread across a city map. 1–3 team phones are real households.
-2. **Start storm** (admin button) picks a random impact area on the map.
+1. **Households exist before the storm.** Fake policyholders live in 10 DFW cities. 1–3 team phones are real households. Everyone has already joined storm alerts by texting the line.
+2. **Start storm** (admin button) hits 2–3 random cities (always including a team phone's city).
 3. Every household inside gets a text: *"Storm alert from State Farm. Reply 1 if you're safe. Reply 2 if you need help."*
 4. **Reply 1** → marked **Checked in (safe)**. Done.
 5. **Reply 2** → marked **Needs help** and becomes a ranked report (the board we already have: score, claim, resolve). Their next message is the details.
@@ -45,14 +45,13 @@ household {            // the people we watch over (fake + real team phones)
   platform: string      // "imessage" | "sim"
   spaceId: string       // Photon conversation, set when a real phone enrolls
   photonSenderId: string
-  x: f64, y: f64        // map position 0..1
-  address: string, age: u32, policy: string
+  address: string, city: string index, age: u32, policy: string
   real: bool            // true = actually text/call it
 }
 
 storm {                 // one active storm at a time
   id: u64 pk autoInc
-  cx: f64, cy: f64, r: f64   // random circle on the map (simple point-in-circle test)
+  cities: string        // affected cities, comma separated
   startedAt: timestamp
   active: bool
 }
@@ -61,7 +60,7 @@ checkin {               // one per household inside the storm
   id: u64 pk autoInc
   stormId: u64 index
   householdId: u64 index
-  state: string         // texted | retexted | called | checked_in | needs_help | urgent | claimed | closed
+  state: string         // texted | retexted | called | safe | needs_help | urgent | claimed | closed | no_reply
   textsSent: u32, callsPlaced: u32
   claimedBy: option<identity>
   requestId: option<u64> // the report row, once they reply 2 or go urgent
@@ -75,7 +74,8 @@ New or changed reducers:
 |---|---|---|
 | `seedHouseholds(n)` | admin | Insert n fake households at random positions (`ctx.random`). |
 | `enrollHousehold(name, handle, ...)` | bridge | When a real phone texts "join", create/update its household with its Photon space. |
-| `startStorm()` | admin | Close any old storm, pick a random circle, create a `checkin` for each household inside, queue `send_text` for real ones. |
+| `startStorm()` | admin | Close any old storm, pick 2–3 cities, create a `checkin` for each household there, queue `send_text` for real ones. |
+| `endStorm()` side effect | | Anyone who never answered becomes `no_reply` (still unaccounted for, not "handled"); queued texts/calls are cancelled. |
 | `endStorm()` | admin | Mark storm inactive, stop chasing. |
 | `victimReplied` (changed) | bridge | If the phone has an open check-in: "1" → `checked_in`, "2" → `needs_help` + create a `request`. Otherwise current behaviour. |
 | `claimCheckin / resolveCheckin` | web | Same one-winner rule as `claimRequest`. |
@@ -87,10 +87,10 @@ Bridge: handle "join" → `enrollHousehold`. Outbox kinds stay `send_text` / `pl
 
 ## Board changes (`src/`)
 
-Map-first, because the map is now the point:
+No map (team decision). Layout:
 
 - **Top:** "Checked in 65%", the stacked bar Safe / Waiting / Needs help / Urgent, and "2,712 of 4,200 households replied" (this is what the mockup was showing).
-- **Map:** every household is a dot (grey = outside storm, amber = waiting, green = safe, red = needs help or urgent), with the storm circle drawn on top.
+- **By city:** one bar per affected city with % safe and urgent / needs-help counts.
 - **Queue tabs:** Urgent (no contact) · Needs help · Waiting (shows "re-text in 0:08", "calling…") · Safe.
 - **Row:** name, address, attempts ("2 texts, 1 call"), time since storm, Claim.
 - **Detail panel:** timeline of every text/call/reply for that household.
@@ -99,7 +99,7 @@ Map-first, because the map is now the point:
 
 ## Demo script (2 min, replaces SPEC §2)
 
-1. Map shows ~2,000 households. Press **Start storm**: a zone appears and ~400 households turn amber.
+1. ~2,000 households on file. Press **Start storm**: 2–3 cities are hit and ~500 households get the alert.
 2. Within seconds most turn green (checked in). The teammate's real phone buzzes with the alert.
 3. Teammate replies **2** → moves to Needs help, ranked, words highlighted.
 4. A second teammate's phone ignores the text → re-text → phone rings on stage → ignored → row turns red **Urgent: no contact**.
