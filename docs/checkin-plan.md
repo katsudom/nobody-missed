@@ -99,7 +99,7 @@ No map (team decision). Layout:
 
 ## Demo script (2 min, replaces SPEC §2)
 
-1. ~2,000 households on file. Press **Start storm**: 2–3 cities are hit and ~500 households get the alert.
+1. ~1,000 households on file. Press **Start storm**: 2–3 cities are hit and ~250 households get the alert.
 2. Within seconds most turn green (checked in). The teammate's real phone buzzes with the alert.
 3. Teammate replies **2** → moves to Needs help, ranked, words highlighted.
 4. A second teammate's phone ignores the text → re-text → phone rings on stage → ignored → row turns red **Urgent: no contact**.

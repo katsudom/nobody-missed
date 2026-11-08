@@ -517,6 +517,23 @@ function pick<T>(ctx: Ctx, xs: T[]): T {
 }
 const DEMO_SECOND = 1_000_000n; // fake replies land within real seconds so the demo moves
 
+/** What a fake household says when it needs help: first person, and true to its own record (age). */
+function helpMessage(ctx: Ctx, h: HouseholdRow): { text: string; facts: object } {
+  const age = h.age || null;
+  const options: { text: string; facts: object }[] = [
+    { text: "Power out, I'm on oxygen and my backup battery is almost dead", facts: { age, medical: ['oxygen'], hazards: ['no_power'], quotes: ['Power out', 'on oxygen'] } },
+    { text: 'Water is coming into the house, we are trapped upstairs', facts: { age, hazards: ['flooding', 'trapped'], quotes: ['Water is coming into the house', 'trapped upstairs'] } },
+    { text: 'My insulin needs the fridge and the power is out', facts: { age, medical: ['insulin'], hazards: ['no_power'], quotes: ['insulin', 'power is out'] } },
+    { text: 'I use a wheelchair and the elevator is out', facts: { age, medical: ['mobility'], quotes: ['wheelchair', 'elevator is out'] } },
+    { text: 'A tree came through the roof and part of the ceiling collapsed', facts: { age, hazards: ['collapse'], quotes: ['ceiling collapsed'] } },
+    { text: 'No power and no water since the storm hit', facts: { age, hazards: ['no_power', 'no_water'], quotes: ['No power', 'no water'] } },
+  ];
+  if (h.age > 0 && h.age <= 50) {
+    options.push({ text: "We have a baby and the power is out, it's getting cold", facts: { age, children: true, hazards: ['no_power'], quotes: ['a baby', 'power is out'] } });
+  }
+  return pick(ctx, options);
+}
+
 function activeStorm(ctx: Ctx) {
   for (const s of ctx.db.storm.iter()) if (s.active) return s;
   return undefined;
@@ -566,8 +583,8 @@ function openReport(ctx: Ctx, c: CheckinRow, h: HouseholdRow, text: string) {
   if (h.real) {
     enqueue(ctx, r.id, 'extract_facts', { text });
   } else {
-    // Fake households "say" one of the sample messages, with facts filled in so they rank.
-    const s = pick(ctx, SAMPLES.slice(0, SAMPLES.length - 1));
+    // Fake households "say" a message that fits them, with facts filled in so they rank.
+    const s = helpMessage(ctx, h);
     r.rawText = s.text;
     applyFacts(r, JSON.stringify(s.facts));
     r.factsStatus = 'done';

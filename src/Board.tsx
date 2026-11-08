@@ -4,6 +4,7 @@ import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
 import RequestRow from './module_bindings/request_table';
+import HouseholdRow from './module_bindings/household_table';
 import {
   Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
 } from './lib';
@@ -11,6 +12,7 @@ import { personFor } from './policyholders';
 import { CaseFacts, CheckinLog, EscalationLadder } from './board/Drawer';
 
 type Request = Infer<typeof RequestRow>;
+type Household = Infer<typeof HouseholdRow>;
 const MAX_ROWS = 200;
 
 type Cat = 'help' | 'waiting' | 'silent' | 'claimed' | 'safe';
@@ -50,6 +52,7 @@ function compare(a: Request, b: Request) {
 
 type RowProps = {
   r: Request;
+  household?: Household;
   now: number;
   mine: boolean;
   claimer: string;
@@ -61,10 +64,10 @@ type RowProps = {
   onResolve: (id: bigint) => void;
 };
 
-const Row = memo(function Row({ r, now, mine, claimer, fresh, selected, onOpen, onClaim, onRelease, onResolve }: RowProps) {
+const Row = memo(function Row({ r, household, now, mine, claimer, fresh, selected, onOpen, onClaim, onRelease, onResolve }: RowProps) {
   const quotes = useMemo(() => parseQuotes(r.facts), [r.facts]);
   const reasons = useMemo(() => parseReasons(r.reasons), [r.reasons]);
-  const person = useMemo(() => personFor(r), [r.id, r.victimHandle, r.rawText]); // eslint-disable-line react-hooks/exhaustive-deps
+  const person = useMemo(() => personFor(r, household), [r.id, r.victimHandle, r.rawText, household]); // eslint-disable-line react-hooks/exhaustive-deps
   const claimed = !!r.claimedBy;
   const stop = (fn: (id: bigint) => void) => (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -106,6 +109,8 @@ export default function Board() {
   const now = useNow();
   const [requests, ready] = useTable(tables.request);
   const [responders] = useTable(tables.responder);
+  const [households] = useTable(tables.household);
+  const byHandle = useMemo(() => new Map(households.map((h) => [h.handle, h])), [households]);
   const [selected, setSelected] = useState<bigint | null>(null);
   const [filter, setFilter] = useState<Cat | 'all'>('all');
   const [confirmReset, setConfirmReset] = useState(false);
@@ -223,6 +228,7 @@ export default function Board() {
                 <Row
                   key={r.id.toString()}
                   r={r}
+                  household={byHandle.get(r.victimHandle)}
                   now={now}
                   mine={!!hex && hex === me}
                   claimer={hex ? names.get(hex) ?? 'A responder' : ''}
@@ -243,6 +249,7 @@ export default function Board() {
           {selectedReq && (
             <Detail
               r={selectedReq}
+              household={byHandle.get(selectedReq.victimHandle)}
               now={now}
               mine={!!selectedReq.claimedBy && selectedReq.claimedBy.toHexString() === me}
               onClaim={onClaim}
@@ -276,11 +283,11 @@ export default function Board() {
   );
 }
 
-function Detail({ r, now, mine, onClaim, onRelease, onResolve }: {
-  r: Request; now: number; mine: boolean;
+function Detail({ r, household, now, mine, onClaim, onRelease, onResolve }: {
+  r: Request; household?: Household; now: number; mine: boolean;
   onClaim: (id: bigint) => void; onRelease: (id: bigint) => void; onResolve: (id: bigint) => void;
 }) {
-  const person = useMemo(() => personFor(r), [r.id, r.victimHandle, r.rawText]); // eslint-disable-line react-hooks/exhaustive-deps
+  const person = useMemo(() => personFor(r, household), [r.id, r.victimHandle, r.rawText, household]); // eslint-disable-line react-hooks/exhaustive-deps
   const reasons = parseReasons(r.reasons);
   const quotes = parseQuotes(r.facts);
   const claimed = !!r.claimedBy;

@@ -66,9 +66,22 @@ function hash(s: string) {
 
 export type Person = { name: string; age?: number; address?: string; policy?: string; policyNo?: string; issue: string };
 
-// Real handle match first; otherwise pick a stable fake policyholder whose issue fits the text.
-export function personFor(r: { id: bigint; victimHandle: string; rawText: string }): Person {
+type HouseholdLike = { name: string; age: number; address: string; city: string; policy: string; handle: string };
+
+// A household from the database wins (storm check-ins), so both boards show the same person.
+// Otherwise: a real handle match, else a stable fake policyholder whose issue fits the text.
+export function personFor(r: { id: bigint; victimHandle: string; rawText: string }, household?: HouseholdLike): Person {
   const issue = issueFor(r.rawText);
+  if (household) {
+    return {
+      name: household.name,
+      age: household.age || undefined,
+      address: `${household.address}, ${household.city}`,
+      policy: household.policy,
+      policyNo: `SF-${String(1000000 + (hash(household.handle) % 9000000))}`,
+      issue: issue.label,
+    };
+  }
   let h = byHandle.get(r.victimHandle);
   if (!h) {
     const pool = HOLDERS.filter((x) => x.issue === issue.key);

@@ -44,8 +44,8 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
       {isAdmin ? (
         <>
           <p className="meta">Shared database: affects everyone.</p>
-          <button className="btn" onClick={() => run((c) => c.reducers.seedHouseholds({ n: 2000 })).then(ok('Added 2,000 households'))}>
-            Seed 2,000 households
+          <button className="btn" onClick={() => run((c) => c.reducers.seedHouseholds({ n: 1000 })).then(ok('Added 1,000 households'))}>
+            Seed 1,000 households
           </button>
           {stormOn ? (
             <button className="btn danger" onClick={() => run((c) => c.reducers.endStorm({})).then(ok('Storm ended'))}>End storm</button>
