@@ -56,8 +56,6 @@ const STATE_LABEL: Record<string, string> = {
   no_reply: 'No reply',
 };
 
-const STEPS = ['Alert sent', 'Re-texted', 'Called', 'Urgent'];
-const STEP_OF: Record<string, number> = { texted: 0, retexted: 1, called: 2, urgent: 3 };
 
 export default function CheckinBoard() {
   const { identity, isActive } = useSpacetimeDB();
@@ -97,18 +95,6 @@ export default function CheckinBoard() {
     return { mine: list, counts: k, rows: shown.slice(0, MAX_ROWS), tab };
   }, [checkins, storm, picked, reqs]);
 
-  const cityStats = useMemo(() => {
-    const m = new Map<string, Record<Bucket, number> & { total: number }>();
-    for (const c of mine) {
-      const city = hh.get(c.householdId)?.city ?? 'Unknown';
-      const s = m.get(city) ?? { urgent: 0, help: 0, waiting: 0, safe: 0, handled: 0, total: 0 };
-      s[bucketOf(c)]++;
-      s.total++;
-      m.set(city, s);
-    }
-    return [...m.entries()].sort((a, b) => b[1].urgent - a[1].urgent || b[1].total - a[1].total);
-  }, [mine, hh]);
-
   const total = mine.length;
   const replied = mine.filter((c) => c.reply !== '').length;
   const pct = total ? Math.round((counts.safe / total) * 100) : 0;
@@ -147,9 +133,6 @@ export default function CheckinBoard() {
             {replied.toLocaleString()} of {total.toLocaleString()} alerted households have replied
             {storm ? ` · ${storm.cities}` : ''}
           </div>
-        </div>
-        <div className="stack" aria-hidden="true">
-          {BUCKETS.map((b) => counts[b.key] > 0 && <i key={b.key} style={{ flex: counts[b.key], background: b.color }} />)}
         </div>
         <div className="legend">
           {BUCKETS.map((b) => (
@@ -203,28 +186,6 @@ export default function CheckinBoard() {
         </section>
 
         <div className="side">
-          {cityStats.length > 0 && (
-            <section className="card cities" aria-label="Check-ins by city">
-              <h3>By city</h3>
-              {cityStats.map(([city, s]) => (
-                <div key={city} className="city">
-                  <div className="cityhead">
-                    <b>{city}</b>
-                    <span className="meta">{Math.round((s.safe / s.total) * 100)}% safe · {s.total} homes</span>
-                  </div>
-                  <div className="stack small" aria-hidden="true">
-                    {BUCKETS.map((b) => s[b.key] > 0 && <i key={b.key} style={{ flex: s[b.key], background: b.color }} />)}
-                  </div>
-                  {(s.urgent > 0 || s.help > 0) && (
-                    <div className="citynote">
-                      {s.urgent > 0 && <span className="u">{s.urgent} urgent</span>}
-                      {s.help > 0 && <span className="h">{s.help} need help</span>}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </section>
-          )}
           {selectedC && (
             <CheckinDetail
               c={selectedC}
@@ -322,73 +283,103 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
   const [outbox] = useTable(tables.outbox);
   const [calls] = useTable(tables.call);
   const b = bucketOf(c);
-  const step = STEP_OF[c.state];
   const quotes = req ? parseQuotes(req.facts) : [];
   const reasons = req ? parseReasons(req.reasons) : [];
 
-  const log = useMemo(() => [
-    ...outbox.filter((o) => o.checkinId === c.id).map((o) => ({ at: tsMs(o.createdAt), text: `${o.kind === 'place_call' ? 'Call' : 'Text'} ${o.status}` })),
-    ...calls.filter((x) => x.checkinId === c.id).map((x) => ({ at: tsMs(x.createdAt), text: `Call ${x.result}${x.dtmf ? `, pressed ${x.dtmf}` : ''}` })),
-  ].sort((a, z) => a.at - z.at), [outbox, calls, c.id]);
+  // Step times: the alert is the check-in's own start; later steps only when a real text/call row exists.
+  const sent = outbox.filter((o) => o.checkinId === c.id && o.kind === 'send_text').sort((x, y) => tsMs(x.createdAt) - tsMs(y.createdAt));
+  const call = calls.filter((x) => x.checkinId === c.id).sort((x, y) => tsMs(y.createdAt) - tsMs(x.createdAt))[0];
+  const clock = (ms?: number) => (ms ? new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
+  const steps = [
+    { label: c.textsSent >= 2 ? 'Re-texted' : 'Re-text', done: c.textsSent >= 2, bad: false, at: clock(sent[1] ? tsMs(sent[1].createdAt) : undefined) },
+    {
+      label: c.callsPlaced === 0 ? 'Phone call' : c.state === 'urgent' ? 'Call not answered' : call?.result === 'answered' ? 'Call answered' : 'Called',
+      done: c.callsPlaced > 0, bad: c.state === 'urgent', at: clock(call ? tsMs(call.createdAt) : undefined),
+    },
+  ];
 
-  const status =
-    nextStep(c, now) ||
-    (b === 'safe' ? 'Checked in. No more texts.'
-      : c.state === 'no_reply' ? 'The storm ended before they answered. Still unaccounted for.'
-      : c.state === 'closed' ? 'Resolved by a responder.'
-      : c.claimedBy ? `${claimer || 'A responder'} is on it.`
-      : b === 'urgent' ? 'Texted twice and called. No answer: send someone.'
-      : '');
+  const timer = nextStep(c, now).replace(/^\D+/, '') || (req ? String(req.score) : '');
+  const statusText: Record<Bucket, string> = {
+    urgent: 'No contact: welfare check',
+    help: 'Needs help',
+    waiting: c.state === 'no_reply' ? 'No reply (storm ended)' : 'Waiting for a reply',
+    safe: 'Checked in safe',
+    handled: c.state === 'closed' ? 'Resolved' : `${claimer || 'A responder'} is on it`,
+  };
 
   return (
-    <aside className="card detail" aria-label="Household details">
-      <div className="dhead">
-        <div>
-          <h2>{h?.name ?? 'Unknown household'}</h2>
-          {h && <div className="meta">{h.age ? `Age ${h.age} · ` : ''}{h.address}, {h.city}</div>}
-          {h && <div className="meta">{h.policy} policy · {h.real ? h.handle : 'simulated household'}</div>}
-        </div>
-        <div className="urgency">
-          <span className={`big ${req ? `tier-${req.tier}` : `c-${b}`}`}>{req ? req.score : STATE_LABEL[c.state]}</span>
-          <span className="l">{req ? 'Urgency' : 'Status'}</span>
+    <aside className="card detail gdetail" aria-label="Household details">
+      <div className="ghead">
+        <h2>{h?.name ?? 'Unknown household'}</h2>
+        {h && <div className="gmeta">{h.age ? `${h.age} · ` : ''}{h.address}, {h.city}</div>}
+      </div>
+
+      <div className="gsec">
+        <div className="glabel">Status</div>
+        <div className={`ggroup g-${b}`}>
+          <div className="grow">
+            <span className={`gicon i-${b}`} aria-hidden="true">
+              {b === 'urgent' ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"><path d="M12 8v5M12 17h.01" /><circle cx="12" cy="12" r="10" /></svg>
+              ) : b === 'safe' ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"><path d="M5 12l5 5L20 7" /></svg>
+              ) : b === 'help' ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+              )}
+            </span>
+            <span className="gtext">{statusText[b]}</span>
+            {timer && <span className="gnum">{timer}</span>}
+          </div>
         </div>
       </div>
 
-      {step !== undefined && (
-        <ol className="ladder2" aria-label={`Step ${step + 1} of 4: ${STEPS[step]}`}>
-          {STEPS.map((label, i) => (
-            <li key={label} className={step >= i ? (i === 3 ? 'bad' : 'done') : ''} aria-current={step === i ? 'step' : undefined}>{label}</li>
+      <div className="gsec">
+        <div className="glabel">Steps</div>
+        <div className="ggroup">
+          <div className="grow"><Check on /><span className="gtext">Alert texted</span><span className="gtime">{clock(tsMs(c.createdAt))}</span></div>
+          {steps.map((st) => (
+            <div key={st.label} className={`grow ${st.done ? '' : 'dim'}`}>
+              {st.bad ? <Cross /> : <Check on={st.done} />}
+              <span className="gtext">{st.label}</span>
+              <span className="gtime">{st.at}</span>
+            </div>
           ))}
-        </ol>
-      )}
-      {status && <div className="meta statusline">{status}</div>}
+        </div>
+      </div>
 
       {c.reply && (
-        <>
-          <div className="bubble">{req ? <Highlighted text={req.rawText} quotes={quotes} /> : c.reply}</div>
-          <div className="stamp">Resident · {new Date(tsMs(c.updatedAt)).toLocaleTimeString()}</div>
-        </>
-      )}
-
-      {req && (
-        <div className="why">
-          <div className="whyl">Why this ranking</div>
-          <div>Base {req.baseScore} + {req.escalation} for waiting unclaimed = {req.score}.</div>
-          {reasons.length > 0 && <div className="reasons">{reasons.map((x, i) => <span key={i} className="reason">{x}</span>)}</div>}
+        <div className="gsec">
+          <div className="glabel">They said · {clock(tsMs(c.updatedAt))}</div>
+          <div className="ggroup gquote">{req ? <Highlighted text={req.rawText} quotes={quotes} /> : c.reply}</div>
         </div>
       )}
 
-      <div className="dactions">
-        {canClaim(c) && <button className="btn big primary" onClick={() => onClaim(c.id)}>Claim</button>}
-        {mine && <button className="btn big" onClick={() => onRelease(c.id)}>Release</button>}
-        {canResolve(c, mine) && <button className="btn big" onClick={() => onResolve(c.id)}>Resolve</button>}
-      </div>
+      {reasons.length > 0 && (
+        <div className="gsec">
+          <div className="glabel">Why first</div>
+          <div className="ggroup">
+            {reasons.map((x) => <div key={x} className="grow"><span className="gtext">{x}</span></div>)}
+          </div>
+        </div>
+      )}
 
-      <h3>Texts and calls · {c.textsSent} texts · {c.callsPlaced} calls</h3>
-      {h && !h.real && <p className="empty left">Simulated household: nothing is really sent.</p>}
-      <ul className="history">
-        {log.map((x, i) => <li key={i}><b>{new Date(x.at).toLocaleTimeString()}</b> {x.text}</li>)}
-      </ul>
+      <div className="gactions">
+        {canClaim(c) && <button className={`gbtn gb-${b}`} onClick={() => onClaim(c.id)}>{b === 'urgent' ? 'Claim and send someone' : 'Claim'}</button>}
+        {mine && <button className="gbtn plain" onClick={() => onRelease(c.id)}>Release</button>}
+        {canResolve(c, mine) && <button className="gbtn plain" onClick={() => onResolve(c.id)}>Mark resolved</button>}
+      </div>
     </aside>
   );
+}
+
+function Check({ on = false }: { on?: boolean }) {
+  return on
+    ? <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#30d158" strokeWidth="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
+    : <span className="gmark empty" aria-hidden="true" />;
+}
+
+function Cross() {
+  return <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff453a" strokeWidth="2.4" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>;
 }

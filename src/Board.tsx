@@ -9,7 +9,6 @@ import {
   Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
 } from './lib';
 import { personFor } from './policyholders';
-import { CaseFacts, CheckinLog, EscalationLadder } from './board/Drawer';
 
 type Request = Infer<typeof RequestRow>;
 type Household = Infer<typeof HouseholdRow>;
@@ -194,11 +193,6 @@ export default function Board() {
           </div>
           <div className="meta">{open.toLocaleString()} open · {critical.toLocaleString()} critical · {total.toLocaleString()} total</div>
         </div>
-        <div className="stack">
-          {CATS.map((c) => counts[c.key] > 0 && (
-            <i key={c.key} style={{ flex: counts[c.key], background: c.color }} />
-          ))}
-        </div>
         <div className="legend">
           {CATS.map((c) => (
             <span key={c.key}><b className="dot" style={{ background: c.color }} />{counts[c.key].toLocaleString()} <em>{c.label}</em></span>
@@ -251,6 +245,7 @@ export default function Board() {
               r={selectedReq}
               household={byHandle.get(selectedReq.victimHandle)}
               now={now}
+              claimer={selectedReq.claimedBy ? names.get(selectedReq.claimedBy.toHexString()) ?? 'A responder' : ''}
               mine={!!selectedReq.claimedBy && selectedReq.claimedBy.toHexString() === me}
               onClaim={onClaim}
               onRelease={onRelease}
@@ -283,58 +278,105 @@ export default function Board() {
   );
 }
 
-function Detail({ r, household, now, mine, onClaim, onRelease, onResolve }: {
-  r: Request; household?: Household; now: number; mine: boolean;
+// The storm alert texts as the module sends them (spacetimedb/src/rules.ts STORM_TEXT / STORM_RETEXT). Display only.
+const STORM_TEXT = 'Storm alert from State Farm. Reply 1 if you are safe. Reply 2 if you need help.';
+const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if you need help.';
+
+type ThreadItem =
+  | { kind: 'out'; text: string; at?: number }
+  | { kind: 'in'; text: string; highlight: boolean; at?: number }
+  | { kind: 'call'; text: string; bad: boolean };
+
+// Report detail, laid out as the text thread the resident actually saw (storyboard C).
+function Detail({ r, household, now, mine, claimer, onClaim, onRelease, onResolve }: {
+  r: Request; household?: Household; now: number; mine: boolean; claimer: string;
   onClaim: (id: bigint) => void; onRelease: (id: bigint) => void; onResolve: (id: bigint) => void;
 }) {
+  const [outbox] = useTable(tables.outbox);
+  const [calls] = useTable(tables.call);
+  const [checkins] = useTable(tables.checkin);
   const person = useMemo(() => personFor(r, household), [r.id, r.victimHandle, r.rawText, household]); // eslint-disable-line react-hooks/exhaustive-deps
   const reasons = parseReasons(r.reasons);
   const quotes = parseQuotes(r.facts);
   const claimed = !!r.claimedBy;
+  const clock = (ms?: number) => (ms ? new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
+
+  const thread = useMemo(() => {
+    const items: ThreadItem[] = [];
+    // Storm alerts that led to this report, if it came from a check-in.
+    const ci = checkins.find((c) => c.requestId === r.id);
+    if (ci) {
+      items.push({ kind: 'out', text: STORM_TEXT, at: tsMs(ci.createdAt) });
+      if (ci.textsSent >= 2) items.push({ kind: 'out', text: STORM_RETEXT });
+      if (ci.callsPlaced > 0) items.push({ kind: 'call', text: 'Check-in call', bad: false });
+    }
+    // What they said (later replies are appended to the same report).
+    r.rawText.split('\n').filter(Boolean).forEach((line, i) =>
+      items.push({ kind: 'in', text: line, highlight: i === 0, at: i === 0 ? tsMs(r.createdAt) : undefined }));
+    // Follow-up texts and calls on the report itself, in order.
+    const later = [
+      ...outbox.filter((o) => o.requestId === r.id && o.kind === 'send_text').map((o) => {
+        let text = 'Check-in text';
+        try { text = (JSON.parse(o.payload) as { text?: string }).text ?? text; } catch { /* keep default */ }
+        return { t: tsMs(o.createdAt), item: { kind: 'out', text, at: tsMs(o.createdAt) } as ThreadItem };
+      }),
+      ...calls.filter((c) => c.requestId === r.id && c.checkinId === 0n).map((c) => ({
+        t: tsMs(c.createdAt),
+        item: {
+          kind: 'call',
+          text: c.result === 'answered' ? `Call answered${c.dtmf ? `, pressed ${c.dtmf}` : ''} · ${clock(tsMs(c.createdAt))}` : `Missed call · ${clock(tsMs(c.createdAt))}`,
+          bad: c.result !== 'answered',
+        } as ThreadItem,
+      })),
+    ].sort((a, b) => a.t - b.t).map((x) => x.item);
+    return [...items, ...later];
+  }, [checkins, outbox, calls, r.id, r.rawText, r.createdAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const band =
+    r.state === 'flagged' ? { tone: 'red', title: 'No contact · go now', sub: `Silent for ${mmss(now - tsMs(r.updatedAt))}` }
+    : r.state === 'closed' ? { tone: 'grey', title: 'Resolved', sub: `Closed ${clock(tsMs(r.updatedAt))}` }
+    : claimed ? { tone: 'blue', title: `${claimer || 'A responder'} is on it`, sub: `Claimed ${clock(tsMs(r.updatedAt))}` }
+    : { tone: 'amber', title: 'Needs help', sub: `Reported ${clock(tsMs(r.createdAt))} · unclaimed ${mmss(now - tsMs(r.createdAt))}` };
 
   return (
-    <aside className="card detail">
-      <div className="dhead">
-        <div>
+    <aside className={`card detail ticket t-${band.tone}`} aria-label="Report details">
+      <div className="tband">
+        <div className="tbandtext">
+          <span className="ttitle">{band.title}</span>
+          <span className="tsub">{band.sub}</span>
+        </div>
+        <div className="tscore"><span>{r.score}</span><em>urgency</em></div>
+      </div>
+      <div className="tbody">
+        <div className="tperson">
           <h2>{person.name}</h2>
           <div className="meta">
-            {person.age ? `Age ${person.age} · ` : ''}{person.address ?? r.victimHandle}
+            {[person.age ? String(person.age) : '', person.address ?? r.victimHandle, person.policy ? `${person.policy} policy` : ''].filter(Boolean).join(' · ')}
           </div>
-          {person.policy && <div className="meta">{person.policy} policy · {person.policyNo}</div>}
         </div>
-        <div className="urgency">
-          <span className={`big tier-${r.tier}`}>{r.score}</span>
-          <span className="l">Urgency</span>
+
+        <div className="thread" aria-label="Messages">
+          {thread.map((m, i) =>
+            m.kind === 'call' ? (
+              <div key={i} className={`tcall ${m.bad ? 'bad' : ''}`}>{m.text}</div>
+            ) : m.kind === 'out' ? (
+              <div key={i} className="tout">{m.text}</div>
+            ) : (
+              <div key={i} className="tin">{m.highlight ? <Highlighted text={m.text} quotes={quotes} /> : m.text}</div>
+            )
+          )}
+        </div>
+
+        {reasons.length > 0 && (
+          <div className="tchips">{reasons.map((x) => <span key={x} className="tchip">{x}</span>)}</div>
+        )}
+
+        <div className="tactions">
+          {!claimed && r.state !== 'closed' && <button className="tbtn main" onClick={() => onClaim(r.id)}>{r.state === 'flagged' ? 'Claim · send someone' : 'Claim'}</button>}
+          {mine && <button className="tbtn" onClick={() => onRelease(r.id)}>Release</button>}
+          {r.state !== 'closed' && <button className="tbtn" onClick={() => onResolve(r.id)}>Resolve</button>}
         </div>
       </div>
-
-      <EscalationLadder r={r} />
-
-      <div className="why">
-        <div className="whyl">Why this ranking</div>
-        <div>
-          {person.issue}
-          {quotes.length > 0 && <> — said “{quotes.join('”, “')}”</>}. Base {r.baseScore} + {r.escalation} for waiting unclaimed = {r.score}.
-        </div>
-        {reasons.length > 0 && <div className="reasons">{reasons.map((x, i) => <span key={i} className="reason">{x}</span>)}</div>}
-      </div>
-
-      <div className="bubble">
-        <Highlighted text={r.rawText} quotes={quotes} />
-      </div>
-      <div className="stamp">Resident · {new Date(tsMs(r.createdAt)).toLocaleTimeString()} · open {mmss(now - tsMs(r.createdAt))}</div>
-
-      <div className="dactions">
-        {!claimed && r.state !== 'closed' && <button className="btn big primary" onClick={() => onClaim(r.id)}>Claim</button>}
-        {mine && <button className="btn big" onClick={() => onRelease(r.id)}>Release</button>}
-        {r.state !== 'closed' && <button className="btn big" onClick={() => onResolve(r.id)}>Resolve</button>}
-      </div>
-
-      <h3>Check-ins · {r.checkinsSent} texts · {r.callsPlaced} calls</h3>
-      <CheckinLog key={r.id.toString()} r={r} />
-
-      <h3>Facts</h3>
-      <CaseFacts r={r} />
     </aside>
   );
 }
