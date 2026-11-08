@@ -15,9 +15,6 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const run = useRun();
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [phoneName, setPhoneName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [city, setCity] = useState('');
   const [sureClear, setSureClear] = useState(false);
   const mode = useMode();
 
@@ -65,19 +62,7 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
           ) : (
             <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started: alerts sent (up to 20 fake households + team phones)'))}>Start storm</button>
           )}
-          <p className="meta">Add a team phone (already joined storm alerts):</p>
-          <input className="devinput" placeholder="Name" value={phoneName} onChange={(e) => setPhoneName(e.target.value)} />
-          <input className="devinput" placeholder="+12145550100" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          <input className="devinput" placeholder="City (blank = random)" value={city} onChange={(e) => setCity(e.target.value)} />
-          <button
-            className="btn"
-            onClick={() =>
-              run((c) => c.reducers.enrollHousehold({ name: phoneName, handle: phone, city, platform: 'imessage', spaceId: '', photonSenderId: '' }))
-                .then((done) => { if (done) { toast('Team phone added', true); setPhone(''); setPhoneName(''); setCity(''); } })
-            }
-          >
-            Add team phone
-          </button>
+          <p className="meta">Team phones join by texting JOIN to the Photon number.</p>
           {onInject && <button className="btn" onClick={onInject}>Inject 2,000 reports</button>}
           <button className="btn danger" onClick={onAskReset}>Reset demo</button>
           {sureClear ? (
