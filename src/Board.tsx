@@ -1,47 +1,32 @@
-// Responder board, "triage inbox" layout (SPEC §6): a slim ranked list on the left, the selected
-// case on the right with one clear action. Display only: ranking, state and escalation come from the module.
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import DevTools from './DevTools';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
 import RequestRow from './module_bindings/request_table';
-import { Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
-import { isRealText, maskHandle, personFor } from './policyholders';
-import ImpactMap from './ImpactMap';
-import { CaseFacts, CheckinLog, EscalationLadder } from './board/Drawer';
+import HouseholdRow from './module_bindings/household_table';
+import {
+  Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
+} from './lib';
+import { personFor } from './policyholders';
 
 type Request = Infer<typeof RequestRow>;
+type Household = Infer<typeof HouseholdRow>;
 const MAX_ROWS = 200;
 
-/** Board mode: only texts from teammates' real phones, or everything including fake/injected data. Per browser. */
-export type Mode = 'real' | 'all';
-const MODE_KEY = 'nobody-missed/board-mode';
-const readMode = (): Mode => {
-  try { return localStorage.getItem(MODE_KEY) === 'all' ? 'all' : 'real'; } catch { return 'real'; }
-};
-const FLASH_MS = 1600;
-
-/** What counts as "this case changed" for the flash. Not the score: escalation ticks it every second. */
-const sigOf = (r: Request) =>
-  `${r.state}|${r.claimedBy?.toHexString() ?? ''}|${r.checkinsSent}|${r.callsPlaced}|${r.lastVictimReplyAt.microsSinceUnixEpoch}|${r.factsStatus}`;
-
 type Cat = 'help' | 'waiting' | 'silent' | 'claimed' | 'safe';
-type Filter = 'open' | Cat;
-
 const CATS: { key: Cat; label: string; color: string }[] = [
-  { key: 'silent', label: 'Welfare check', color: 'var(--red)' },
-  { key: 'waiting', label: 'Waiting on reply', color: 'var(--amber)' },
-  { key: 'help', label: 'Needs help', color: 'var(--orange)' },
+  { key: 'help', label: 'Needs help', color: 'var(--red)' },
+  { key: 'waiting', label: 'Waiting', color: 'var(--amber)' },
+  { key: 'silent', label: 'Silent', color: 'var(--grey)' },
   { key: 'claimed', label: 'Claimed', color: 'var(--blue)' },
   { key: 'safe', label: 'Safe', color: 'var(--green)' },
 ];
-const CAT_COLOR = Object.fromEntries(CATS.map((c) => [c.key, c.color])) as Record<Cat, string>;
 
 function catOf(r: Request): Cat {
   if (r.state === 'closed') return 'safe';
-  if (r.claimedBy) return 'claimed';
   if (r.state === 'flagged') return 'silent';
+  if (r.claimedBy) return 'claimed';
   if (r.state === 'checkin_text_sent' || r.state === 'call_placed') return 'waiting';
   return 'help';
 }
@@ -49,8 +34,8 @@ function catOf(r: Request): Cat {
 const STATE_LABEL: Record<string, string> = {
   new: 'Needs help',
   waiting: 'Needs help',
-  checkin_text_sent: 'Check-in text sent',
-  call_placed: 'Calling',
+  checkin_text_sent: 'Text sent',
+  call_placed: 'Call placed',
   flagged: 'Needs welfare check',
   claimed: 'Claimed',
   closed: 'Safe',
@@ -64,83 +49,71 @@ function compare(a: Request, b: Request) {
   );
 }
 
-/** "12m", "1h 05m": short enough for a list row. */
-function ago(ms: number) {
-  const m = Math.max(0, Math.floor(ms / 60000));
-  if (m < 1) return '<1m';
-  if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
-}
-
-// ---------- Queue row: one case, two lines, no buttons ----------
 type RowProps = {
   r: Request;
+  household?: Household;
   now: number;
+  mine: boolean;
   claimer: string;
   fresh: boolean;
   selected: boolean;
   onOpen: (id: bigint) => void;
+  onClaim: (id: bigint) => void;
+  onRelease: (id: bigint) => void;
+  onResolve: (id: bigint) => void;
 };
 
-const Row = memo(function Row({ r, now, claimer, fresh, selected, onOpen }: RowProps) {
-  const person = useMemo(() => personFor(r), [r.id, r.victimHandle, r.rawText]); // eslint-disable-line react-hooks/exhaustive-deps
-  const cat = catOf(r);
-  const status =
-    cat === 'claimed' ? `${claimer} on it`
-    : cat === 'safe' ? 'Safe'
-    : cat === 'silent' ? 'Welfare check'
-    : cat === 'waiting' ? (r.state === 'call_placed' ? 'Calling' : 'Texted')
-    : ago(now - tsMs(r.createdAt));
+const Row = memo(function Row({ r, household, now, mine, claimer, fresh, selected, onOpen, onClaim, onRelease, onResolve }: RowProps) {
+  const quotes = useMemo(() => parseQuotes(r.facts), [r.facts]);
+  const reasons = useMemo(() => parseReasons(r.reasons), [r.reasons]);
+  const person = useMemo(() => personFor(r, household), [r.id, r.victimHandle, r.rawText, household]); // eslint-disable-line react-hooks/exhaustive-deps
+  const claimed = !!r.claimedBy;
+  const stop = (fn: (id: bigint) => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fn(r.id);
+  };
+  const timer = claimed ? '' : `unclaimed ${mmss(now - tsMs(r.createdAt))}`;
 
   return (
-    <li>
-      <button
-        type="button"
-        className={`irow cat-${cat}${selected ? ' is-selected' : ''}${fresh ? ' is-fresh' : ''}`}
-        aria-current={selected ? 'true' : undefined}
-        data-id={r.id.toString()}
-        onClick={() => onOpen(r.id)}
-      >
-        <span className="irow__dot" style={{ background: CAT_COLOR[cat] }} aria-hidden />
-        <span className="irow__main">
-          <span className="irow__top">
-            <span className="irow__name">{person.name}</span>
-            <span className="irow__issue">{person.issue}</span>
-          </span>
-          <span className="irow__msg">{r.rawText}</span>
-        </span>
-        <span className="irow__side">
-          <span className={`irow__score tier-${r.tier}`}>{r.score}</span>
-          <span className={`irow__status s-${cat}`}>{status}</span>
-        </span>
-      </button>
-    </li>
+    <div
+      className={`row ${r.state === 'flagged' ? 'flagged' : ''} ${selected ? 'selected' : ''} ${fresh ? 'pulse' : ''}`}
+      onClick={() => onOpen(r.id)}
+    >
+      <span className={`pill state-${r.state}`}>{STATE_LABEL[r.state] ?? r.state}</span>
+      <div className="main">
+        <div className="name">{person.name}</div>
+        <div className="text"><Highlighted text={r.rawText} quotes={quotes} /></div>
+        <div className="sub">
+          <span className="issue">{person.issue}</span>
+          {reasons.map((x, i) => <span key={i} className="reason">{x}</span>)}
+        </div>
+      </div>
+      <span className="timer">{timer}</span>
+      <div className={`bar tier-${r.tier}`}><i style={{ width: `${Math.min(100, r.score)}%` }} /></div>
+      <span className={`score tier-${r.tier}`}>{r.score}</span>
+      <div className="actions">
+        {claimed && <span className="onway">{claimer} is on the way</span>}
+        {!claimed && r.state !== 'closed' && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
+        {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
+        {r.state !== 'closed' && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
+      </div>
+    </div>
   );
 });
 
-// ---------- Board ----------
 export default function Board() {
   const { identity } = useSpacetimeDB();
   const run = useRun();
   const toast = useToast();
   const now = useNow();
-  const [allRequests, ready] = useTable(tables.request);
-  const [mode, setModeState] = useState<Mode>(readMode);
-  const setMode = (m: Mode) => {
-    setModeState(m);
-    setSelected(null);
-    try { localStorage.setItem(MODE_KEY, m); } catch { /* storage blocked: still works this session */ }
-  };
-  const requests = useMemo(
-    () => (mode === 'real' ? allRequests.filter(isRealText) : allRequests),
-    [allRequests, mode]
-  );
+  const [requests, ready] = useTable(tables.request);
   const [responders] = useTable(tables.responder);
+  const [households] = useTable(tables.household);
+  const byHandle = useMemo(() => new Map(households.map((h) => [h.handle, h])), [households]);
   const [selected, setSelected] = useState<bigint | null>(null);
-  const [filter, setFilter] = useState<Filter>('open');
+  const [filter, setFilter] = useState<Cat | 'all'>('all');
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const listRef = useRef<HTMLOListElement>(null);
 
   const names = useMemo(() => {
     const m = new Map<string, string>();
@@ -148,61 +121,36 @@ export default function Board() {
     return m;
   }, [responders]);
 
-  const { top, counts, total, open } = useMemo(() => {
+  const { top, counts, total, open, critical } = useMemo(() => {
     const c: Record<Cat, number> = { help: 0, waiting: 0, silent: 0, claimed: 0, safe: 0 };
+    let crit = 0;
     const shown: Request[] = [];
     for (const r of requests) {
       const k = catOf(r);
       c[k]++;
-      if (filter === k || (filter === 'open' && k !== 'safe')) shown.push(r);
+      if (k !== 'safe' && r.tier === 'critical') crit++;
+      if (filter === 'all' || filter === k) shown.push(r);
     }
-    return { top: shown.sort(compare).slice(0, MAX_ROWS), counts: c, total: requests.length, open: requests.length - c.safe };
-  }, [requests, filter]);
-  const shownTotal = filter === 'open' ? open : counts[filter];
-
-  // Flash a row when it arrives or changes (new text, check-in sent, reply, claim, closed), after the first full load.
-  const seen = useRef<Map<string, string> | null>(null);
-  const flashUntil = useRef(new Map<string, number>());
-  const t = Date.now();
-  if (ready) {
-    if (seen.current === null) seen.current = new Map(allRequests.map((r) => [r.id.toString(), sigOf(r)]));
-    else for (const r of allRequests) {
-      const k = r.id.toString();
-      const sig = sigOf(r);
-      if (seen.current.get(k) !== sig) { seen.current.set(k, sig); flashUntil.current.set(k, t + FLASH_MS); }
-    }
-  }
-  const freshIds = new Set<string>();
-  for (const [k, until] of flashUntil.current) {
-    if (until > t) freshIds.add(k); else flashUntil.current.delete(k);
-  }
-
-  // The panel shows the clicked case, or the top-ranked one until you click.
-  const selectedReq =
-    (selected !== null ? requests.find((r) => r.id === selected) : undefined) ?? top[0];
-
-  // ↑ / ↓ (or k / j) move through the list. Read live values from a ref so fast repeats don't use stale state.
-  const nav = useRef({ top, id: selectedReq?.id });
-  nav.current = { top, id: selectedReq?.id };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      const step = e.key === 'ArrowDown' || e.key === 'j' ? 1 : e.key === 'ArrowUp' || e.key === 'k' ? -1 : 0;
-      const { top: list, id } = nav.current;
-      if (!step || list.length === 0) return;
-      e.preventDefault();
-      const i = id === undefined ? -1 : list.findIndex((r) => r.id === id);
-      const next = list[Math.min(list.length - 1, Math.max(0, i + step))];
-      nav.current = { top: list, id: next.id };
-      setSelected(next.id);
-      listRef.current
-        ?.querySelector(`[data-id="${next.id.toString()}"]`)
-        ?.scrollIntoView({ block: 'nearest' });
+    return {
+      top: shown.sort(compare).slice(0, MAX_ROWS),
+      counts: c,
+      total: requests.length,
+      open: requests.length - c.safe,
+      critical: crit,
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [requests, filter]);
+  const shownTotal = filter === 'all' ? total : counts[filter];
+
+  // Pulse only rows that arrive after the first full load.
+  const seen = useRef<Set<string> | null>(null);
+  const freshIds = new Set<string>();
+  if (ready) {
+    if (seen.current === null) seen.current = new Set(requests.map((r) => r.id.toString()));
+    else for (const r of requests) {
+      const k = r.id.toString();
+      if (!seen.current.has(k)) { seen.current.add(k); freshIds.add(k); }
+    }
+  }
 
   const me = identity?.toHexString();
   const onClaim = (id: bigint) => run((c) => c.reducers.claimRequest({ requestId: id }));
@@ -220,106 +168,94 @@ export default function Board() {
     }
   };
 
-  const dots = useMemo(
-    () => top.map((r) => ({ id: r.id, color: CAT_COLOR[catOf(r)], big: r.tier === 'critical' })),
-    [top]
-  );
+  // Detail panel shows the clicked row, or the top-ranked one until you click.
+  const selectedReq =
+    (selected !== null ? requests.find((r) => r.id === selected) : undefined) ?? top[0];
+
   const handled = total ? Math.round(((counts.claimed + counts.safe) / total) * 100) : 0;
 
-  const tabs: { key: Filter; label: string; n: number; color?: string }[] = [
-    { key: 'open', label: 'Open', n: open },
-    ...CATS.map((c) => ({ key: c.key as Filter, label: c.label, n: counts[c.key], color: c.color })),
-  ];
-
   return (
-    <div className="inbox">
-      <header className="ibar">
-        <div className="ibar__brand">
-          <span className="eyebrow">Nobody Missed</span>
-          <h1>Check-in command center</h1>
+    <div className="board">
+      <header className="head">
+        <div>
+          <div className="eyebrow">Nobody Missed · Responder board</div>
+          <h1>Check-In Command Center</h1>
         </div>
-        <div className="ibar__progress" title={`${counts.claimed + counts.safe} of ${total} claimed or safe`}>
-          <span className="ibar__pct">{handled}%</span>
-          <span className="ibar__pctl">claimed or safe</span>
-        </div>
-        <span className={`simtag${mode === 'real' ? ' is-real' : ''}`}>
-          {mode === 'real' ? 'Real phones only' : 'Includes fake data · synthetic policyholders'}
-        </span>
+        <span className="spacer" />
+        <span className="simtag">Simulated storm · synthetic policyholders</span>
+        <a className="btn" href="#/board">Check-ins</a>
       </header>
 
-      <nav className="filters" aria-label="Filter cases">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className={`filter${filter === t.key ? ' is-on' : ''}${t.key === 'silent' && t.n > 0 ? ' is-alert' : ''}`}
-            aria-pressed={filter === t.key}
-            onClick={() => setFilter(t.key)}
-          >
-            {t.color && <span className="filter__dot" style={{ background: t.color }} aria-hidden />}
-            {t.label}
-            <span className="filter__n">{t.n.toLocaleString()}</span>
-          </button>
-        ))}
-      </nav>
-
-      <div className="ibody">
-        <section className="ilist" aria-label="Ranked cases">
-          <div className="ilist__head">
-            <span>Most urgent first</span>
-            <span className="ilist__keys"><kbd>↑</kbd><kbd>↓</kbd> to move</span>
+      <section className="card summary">
+        <div className="sumtop">
+          <div>
+            <span className="eyebrow">Claimed or safe</span> <span className="pct">{handled}%</span>
           </div>
-          {!ready && <p className="empty">Loading…</p>}
-          {ready && top.length === 0 && (
-            <p className="empty">
-              {mode === 'real' && requests.length === 0 ? "No real texts yet. Text the Photon number from a teammate's iPhone." : 'No cases here.'}
-            </p>
-          )}
-          <ol className="ilist__rows" ref={listRef}>
+          <div className="meta">{open.toLocaleString()} open · {critical.toLocaleString()} critical · {total.toLocaleString()} total</div>
+        </div>
+        <div className="legend">
+          {CATS.map((c) => (
+            <span key={c.key}><b className="dot" style={{ background: c.color }} />{counts[c.key].toLocaleString()} <em>{c.label}</em></span>
+          ))}
+        </div>
+      </section>
+
+      <div className="cols">
+        <section className="card queue">
+          <div className="qhead">
+            <h2>Ranked queue</h2>
+            <div className="tabs">
+              <button className={`tab ${filter === 'all' ? 'on' : ''}`} onClick={() => setFilter('all')}>All <span>{total.toLocaleString()}</span></button>
+              {CATS.map((c) => (
+                <button key={c.key} className={`tab ${filter === c.key ? 'on' : ''}`} onClick={() => setFilter(c.key)}>
+                  <b className="dot" style={{ background: c.color }} />{c.label} <span>{counts[c.key].toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="list">
+            {!ready && <p className="empty">Loading…</p>}
+            {ready && top.length === 0 && <p className="empty">Nothing here.</p>}
             {top.map((r) => {
               const hex = r.claimedBy?.toHexString();
               return (
                 <Row
                   key={r.id.toString()}
                   r={r}
+                  household={byHandle.get(r.victimHandle)}
                   now={now}
-                  claimer={hex ? (hex === me ? 'You' : names.get(hex) ?? 'A responder') : ''}
+                  mine={!!hex && hex === me}
+                  claimer={hex ? names.get(hex) ?? 'A responder' : ''}
                   fresh={freshIds.has(r.id.toString())}
                   selected={selectedReq?.id === r.id}
                   onOpen={setSelected}
+                  onClaim={onClaim}
+                  onRelease={onRelease}
+                  onResolve={onResolve}
                 />
               );
             })}
-          </ol>
-          {shownTotal > MAX_ROWS && <p className="empty">Showing the top {MAX_ROWS} of {shownTotal.toLocaleString()}.</p>}
+            {shownTotal > MAX_ROWS && <p className="empty">Showing the top {MAX_ROWS} of {shownTotal.toLocaleString()}.</p>}
+          </div>
         </section>
 
-        <main className="icase">
-          {selectedReq ? (
-            <CasePanel
+        <div className="side">
+          {selectedReq && (
+            <Detail
               r={selectedReq}
+              household={byHandle.get(selectedReq.victimHandle)}
               now={now}
+              claimer={selectedReq.claimedBy ? names.get(selectedReq.claimedBy.toHexString()) ?? 'A responder' : ''}
               mine={!!selectedReq.claimedBy && selectedReq.claimedBy.toHexString() === me}
-              claimer={(() => {
-                const hex = selectedReq.claimedBy?.toHexString();
-                return hex ? (hex === me ? 'You' : names.get(hex) ?? 'A responder') : '';
-              })()}
-              dots={dots}
-              onPick={setSelected}
               onClaim={onClaim}
               onRelease={onRelease}
               onResolve={onResolve}
             />
-          ) : (
-            <div className="icase__empty">
-              <h2>{ready ? 'Nobody waiting' : 'Loading…'}</h2>
-              {ready && <p className="meta">New messages show up on the left, most urgent first.</p>}
-            </div>
           )}
-        </main>
+        </div>
       </div>
 
-      <DevTools mode={mode} onMode={setMode} onInject={onInject} onAskReset={() => setConfirmReset(true)} />
+      <DevTools onInject={onInject} onAskReset={() => setConfirmReset(true)} />
 
       {confirmReset && (
         <div className="modal" onClick={() => !resetting && setConfirmReset(false)}>
@@ -342,76 +278,105 @@ export default function Board() {
   );
 }
 
-// ---------- Selected case ----------
-function CasePanel({ r, now, mine, claimer, dots, onPick, onClaim, onRelease, onResolve }: {
-  r: Request; now: number; mine: boolean; claimer: string;
-  dots: { id: bigint; color: string; big: boolean }[];
-  onPick: (id: bigint) => void;
+// The storm alert texts as the module sends them (spacetimedb/src/rules.ts STORM_TEXT / STORM_RETEXT). Display only.
+const STORM_TEXT = 'Storm alert from State Farm. Reply 1 if you are safe. Reply 2 if you need help.';
+const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if you need help.';
+
+type ThreadItem =
+  | { kind: 'out'; text: string; at?: number }
+  | { kind: 'in'; text: string; highlight: boolean; at?: number }
+  | { kind: 'call'; text: string; bad: boolean };
+
+// Report detail, laid out as the text thread the resident actually saw (storyboard C).
+function Detail({ r, household, now, mine, claimer, onClaim, onRelease, onResolve }: {
+  r: Request; household?: Household; now: number; mine: boolean; claimer: string;
   onClaim: (id: bigint) => void; onRelease: (id: bigint) => void; onResolve: (id: bigint) => void;
 }) {
-  const person = useMemo(() => personFor(r), [r.id, r.victimHandle, r.rawText]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [outbox] = useTable(tables.outbox);
+  const [calls] = useTable(tables.call);
+  const [checkins] = useTable(tables.checkin);
+  const person = useMemo(() => personFor(r, household), [r.id, r.victimHandle, r.rawText, household]); // eslint-disable-line react-hooks/exhaustive-deps
   const reasons = parseReasons(r.reasons);
   const quotes = parseQuotes(r.facts);
   const claimed = !!r.claimedBy;
-  const closed = r.state === 'closed';
-  const cat = catOf(r);
+  const clock = (ms?: number) => (ms ? new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
+
+  const thread = useMemo(() => {
+    const items: ThreadItem[] = [];
+    // Storm alerts that led to this report, if it came from a check-in.
+    const ci = checkins.find((c) => c.requestId === r.id);
+    if (ci) {
+      items.push({ kind: 'out', text: STORM_TEXT, at: tsMs(ci.createdAt) });
+      if (ci.textsSent >= 2) items.push({ kind: 'out', text: STORM_RETEXT });
+      if (ci.callsPlaced > 0) items.push({ kind: 'call', text: 'Check-in call', bad: false });
+    }
+    // What they said (later replies are appended to the same report).
+    r.rawText.split('\n').filter(Boolean).forEach((line, i) =>
+      items.push({ kind: 'in', text: line, highlight: i === 0, at: i === 0 ? tsMs(r.createdAt) : undefined }));
+    // Follow-up texts and calls on the report itself, in order.
+    const later = [
+      ...outbox.filter((o) => o.requestId === r.id && o.kind === 'send_text').map((o) => {
+        let text = 'Check-in text';
+        try { text = (JSON.parse(o.payload) as { text?: string }).text ?? text; } catch { /* keep default */ }
+        return { t: tsMs(o.createdAt), item: { kind: 'out', text, at: tsMs(o.createdAt) } as ThreadItem };
+      }),
+      ...calls.filter((c) => c.requestId === r.id && c.checkinId === 0n).map((c) => ({
+        t: tsMs(c.createdAt),
+        item: {
+          kind: 'call',
+          text: c.result === 'answered' ? `Call answered${c.dtmf ? `, pressed ${c.dtmf}` : ''} · ${clock(tsMs(c.createdAt))}` : `Missed call · ${clock(tsMs(c.createdAt))}`,
+          bad: c.result !== 'answered',
+        } as ThreadItem,
+      })),
+    ].sort((a, b) => a.t - b.t).map((x) => x.item);
+    return [...items, ...later];
+  }, [checkins, outbox, calls, r.id, r.rawText, r.createdAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const band =
+    r.state === 'flagged' ? { tone: 'red', title: 'No contact · go now', sub: `Silent for ${mmss(now - tsMs(r.updatedAt))}` }
+    : r.state === 'closed' ? { tone: 'grey', title: 'Resolved', sub: `Closed ${clock(tsMs(r.updatedAt))}` }
+    : claimed ? { tone: 'blue', title: `${claimer || 'A responder'} is on it`, sub: `Claimed ${clock(tsMs(r.updatedAt))}` }
+    : { tone: 'amber', title: 'Needs help', sub: `Reported ${clock(tsMs(r.createdAt))} · unclaimed ${mmss(now - tsMs(r.createdAt))}` };
 
   return (
-    <article className={`case cat-${cat}`} aria-label={`Case: ${person.name}`}>
-      <header className="case__head">
-        <div className="case__who">
+    <aside className={`card detail ticket t-${band.tone}`} aria-label="Report details">
+      <div className="tband">
+        <div className="tbandtext">
+          <span className="ttitle">{band.title}</span>
+          <span className="tsub">{band.sub}</span>
+        </div>
+        <div className="tscore"><span>{r.score}</span><em>urgency</em></div>
+      </div>
+      <div className="tbody">
+        <div className="tperson">
           <h2>{person.name}</h2>
           <div className="meta">
-            {person.age ? `Age ${person.age} · ` : ''}{person.address ?? r.victimHandle}
-            {person.policy && <> · {person.policy} policy</>}
+            {[person.age ? String(person.age) : '', person.address ?? r.victimHandle, person.policy ? `${person.policy} policy` : ''].filter(Boolean).join(' · ')}
           </div>
         </div>
-        <div className="case__urgency">
-          <span className={`case__score tier-${r.tier}`}>{r.score}</span>
-          <span className="case__scorel">urgency</span>
+
+        <div className="thread" aria-label="Messages">
+          {thread.map((m, i) =>
+            m.kind === 'call' ? (
+              <div key={i} className={`tcall ${m.bad ? 'bad' : ''}`}>{m.text}</div>
+            ) : m.kind === 'out' ? (
+              <div key={i} className="tout">{m.text}</div>
+            ) : (
+              <div key={i} className="tin">{m.highlight ? <Highlighted text={m.text} quotes={quotes} /> : m.text}</div>
+            )
+          )}
         </div>
-      </header>
 
-      <div className="case__bar">
-        <span className={`pill state-${r.state}`}>{STATE_LABEL[r.state] ?? r.state}</span>
-        <span className="case__open meta">open {mmss(now - tsMs(r.createdAt))}</span>
-        <span className="spacer" />
-        {claimed && !closed && <span className="case__claimer">{claimer} {claimer === 'You' ? 'have' : 'has'} this case</span>}
-        {!claimed && !closed && (
-          <button className="btn big primary" onClick={() => onClaim(r.id)}>Claim this case</button>
+        {reasons.length > 0 && (
+          <div className="tchips">{reasons.map((x) => <span key={x} className="tchip">{x}</span>)}</div>
         )}
-        {mine && !closed && <button className="btn big" onClick={() => onRelease(r.id)}>Release</button>}
-        {!closed && <button className="btn big" onClick={() => onResolve(r.id)}>Mark safe</button>}
+
+        <div className="tactions">
+          {!claimed && r.state !== 'closed' && <button className="tbtn main" onClick={() => onClaim(r.id)}>{r.state === 'flagged' ? 'Claim · send someone' : 'Claim'}</button>}
+          {mine && <button className="tbtn" onClick={() => onRelease(r.id)}>Release</button>}
+          {r.state !== 'closed' && <button className="tbtn" onClick={() => onResolve(r.id)}>Resolve</button>}
+        </div>
       </div>
-
-      <EscalationLadder r={r} />
-
-      <div className="case__msg">
-        <div className="bubble"><Highlighted text={r.rawText} quotes={quotes} /></div>
-        <div className="stamp">{r.platform} · {isRealText(r) ? maskHandle(r.victimHandle) : r.victimHandle} · {new Date(tsMs(r.createdAt)).toLocaleTimeString()}</div>
-      </div>
-
-      <div className="case__grid">
-        <section className="case__sec">
-          <h3>Why it's ranked here</h3>
-          <p className="case__why">
-            {person.issue}. Base {r.baseScore} + {r.escalation} for waiting unclaimed = <b>{r.score}</b>.
-          </p>
-          {reasons.length > 0 && <div className="reasons">{reasons.map((x, i) => <span key={i} className="reason">{x}</span>)}</div>}
-          <h3>Facts</h3>
-          <CaseFacts r={r} />
-        </section>
-
-        <section className="case__sec">
-          <h3>Check-ins · {r.checkinsSent} texts · {r.callsPlaced} calls</h3>
-          <CheckinLog key={r.id.toString()} r={r} />
-        </section>
-      </div>
-
-      <section className="case__sec case__map">
-        <h3>Where <span className="meta">positions simulated</span></h3>
-        <ImpactMap dots={dots} selectedId={r.id} onPick={onPick} />
-      </section>
-    </article>
+    </aside>
   );
 }

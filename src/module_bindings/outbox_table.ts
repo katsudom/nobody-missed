@@ -17,4 +17,5 @@ export default __t.row({
   payload: __t.string(),
   status: __t.string(),
   createdAt: __t.timestamp().name("created_at"),
+  checkinId: __t.u64().name("checkin_id"),
 });

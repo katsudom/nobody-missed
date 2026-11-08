@@ -66,22 +66,21 @@ function hash(s: string) {
 
 export type Person = { name: string; age?: number; address?: string; policy?: string; policyNo?: string; issue: string };
 
-/** A text from a real phone (a teammate's iPhone via Photon), not the victim-sim page or injected load. */
-export const isRealText = (r: { platform: string }) => r.platform !== 'sim' && r.platform !== 'synthetic';
+type HouseholdLike = { name: string; age: number; address: string; city: string; policy: string; handle: string };
 
-/** "+14055551234" -> "(405) ··· ····": enough to tell phones apart, safe to show on a projector. */
-export function maskHandle(handle: string) {
-  const d = handle.replace(/\D/g, '');
-  const area = d.length === 11 && d[0] === '1' ? d.slice(1, 4) : d.length === 10 ? d.slice(0, 3) : '';
-  return area ? `(${area}) ··· ····` : 'hidden number';
-}
-
-// Real phones get a plain label. Others: real handle match first; otherwise a stable fake policyholder whose issue fits.
-export function personFor(r: { id: bigint; victimHandle: string; rawText: string; platform?: string }): Person {
+// A household from the database wins (storm check-ins), so both boards show the same person.
+// Otherwise: a real handle match, else a stable fake policyholder whose issue fits the text.
+export function personFor(r: { id: bigint; victimHandle: string; rawText: string }, household?: HouseholdLike): Person {
   const issue = issueFor(r.rawText);
-  if (r.platform && isRealText({ platform: r.platform })) {
-    const masked = maskHandle(r.victimHandle);
-    return { name: `Text from ${masked.split(' ')[0]}`, address: masked, issue: issue.label };
+  if (household) {
+    return {
+      name: household.name,
+      age: household.age || undefined,
+      address: `${household.address}, ${household.city}`,
+      policy: household.policy,
+      policyNo: `SF-${String(1000000 + (hash(household.handle) % 9000000))}`,
+      issue: issue.label,
+    };
   }
   let h = byHandle.get(r.victimHandle);
   if (!h) {
@@ -91,10 +90,4 @@ export function personFor(r: { id: bigint; victimHandle: string; rawText: string
   }
   const policyNo = `SF-${String(1000000 + (hash(h.handle) % 9000000))}`;
   return { name: h.name, age: h.age, address: h.address, policy: h.policy, policyNo, issue: issue.label };
-}
-
-// Stable fake map position (0..1) for a request.
-export function mapPos(id: bigint): [number, number] {
-  const a = hash(`x${id}`), b = hash(`y${id}`);
-  return [(a % 10000) / 10000, (b % 10000) / 10000];
 }

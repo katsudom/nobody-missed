@@ -1,6 +1,6 @@
 // Nobody Missed — SpacetimeDB module. ALL state, rules, timers and claims live here (SPEC §3–5).
 import { schema, table, t, SenderError, type InferSchema, type ReducerCtx } from 'spacetimedb/server';
-import { ScheduleAt } from 'spacetimedb';
+import { ScheduleAt, Timestamp } from 'spacetimedb';
 import {
   CHECKIN_TEXT,
   OPEN_UNCLAIMED,
@@ -12,6 +12,12 @@ import {
   stateAfterReply,
   totalScore,
   type Tier,
+  AWAITING,
+  STORM_RETEXT,
+  STORM_TEXT,
+  checkinAfterCall,
+  checkinAfterReply,
+  decideCheckin,
 } from './rules.ts';
 
 // ---------- Tables (SPEC §4) ----------
@@ -63,6 +69,7 @@ const outbox = table(
     payload: t.string(), // JSON
     status: t.string(), // "queued" | "taken" | "done" | "failed" | "cancelled"
     createdAt: t.timestamp(),
+    checkinId: t.u64().default(0n), // storm check-in this text/call belongs to (0 = a request's)
   }
 );
 
@@ -75,6 +82,7 @@ const call = table(
     result: t.string(), // "placing" | "ringing" | "answered" | "no_answer" | "busy" | "failed"
     dtmf: t.string(),
     createdAt: t.timestamp(),
+    checkinId: t.u64().default(0n), // storm check-in this call belongs to (0 = a request's)
   }
 );
 
@@ -94,7 +102,60 @@ const admin = table(
   }
 );
 
-const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin });
+// ---------- Storm check-ins (docs/checkin-plan.md) ----------
+// People we watch over. Fake ones (real=false, platform "synthetic") are never texted or called;
+// the tick plays their replies. Real ones are team phones that texted the line once.
+const household = table(
+  { name: 'household', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    name: t.string(),
+    handle: t.string().index('btree'),
+    platform: t.string(),
+    spaceId: t.string(),
+    photonSenderId: t.string(),
+    address: t.string(), // street line
+    city: t.string().index('btree'), // a storm hits whole cities
+    age: t.u32(),
+    policy: t.string(),
+    real: t.bool(),
+  }
+);
+
+const storm = table(
+  { name: 'storm', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    cities: t.string(), // affected cities, comma separated, e.g. "Plano, Garland"
+    startedAt: t.timestamp(),
+    active: t.bool(),
+  }
+);
+
+const checkin = table(
+  {
+    name: 'checkin',
+    public: true,
+    indexes: [{ accessor: 'byState', algorithm: 'btree', columns: ['state'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    stormId: t.u64().index('btree'),
+    householdId: t.u64().index('btree'),
+    state: t.string(), // texted | retexted | called | safe | needs_help | urgent | claimed | closed | no_reply
+    textsSent: t.u32(),
+    callsPlaced: t.u32(),
+    reply: t.string(), // what they said, if anything
+    claimedBy: t.option(t.identity()),
+    requestId: t.u64(), // report row once they need help (0 = none)
+    simFate: t.string(), // fake households only: "safe" | "help" | "silent"; "" for real
+    simReplyAt: t.timestamp(), // fake households only: when they "reply"
+    createdAt: t.timestamp(),
+    updatedAt: t.timestamp(), // when it entered its current state (drives the ladder)
+  }
+);
+
+const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin, household, storm, checkin });
 export default spacetimedb;
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
@@ -111,7 +172,7 @@ function ensureTick(ctx: Ctx) {
   }
 }
 
-function enqueue(ctx: Ctx, requestId: bigint, kind: string, payload: object) {
+function enqueue(ctx: Ctx, requestId: bigint, kind: string, payload: object, checkinId = 0n) {
   ctx.db.outbox.insert({
     id: 0n,
     requestId,
@@ -119,6 +180,7 @@ function enqueue(ctx: Ctx, requestId: bigint, kind: string, payload: object) {
     payload: JSON.stringify(payload),
     status: 'queued',
     createdAt: ctx.timestamp,
+    checkinId,
   });
 }
 
@@ -239,12 +301,15 @@ export const tick = spacetimedb.reducer({ onSchedule: tickTimer }, { timer: tick
       if (changed) save(ctx, r);
     }
   }
+  tickCheckins(ctx);
 });
 
 // ---------- Reducers (SPEC §5 table) ----------
 export const submitRequest = spacetimedb.reducer(
   { victimHandle: t.string(), spaceId: t.string(), photonSenderId: t.string(), platform: t.string(), rawText: t.string() },
   (ctx, args) => {
+    // Storm check-ins (docs/checkin-plan.md): a household's message is first a check-in reply or a JOIN.
+    if (routeHouseholdMessage(ctx, args)) return;
     const r = newRequest(ctx, args);
     enqueue(ctx, r.id, 'extract_facts', { text: r.rawText });
   }
@@ -293,6 +358,11 @@ export const resolveRequest = spacetimedb.reducer({ requestId: t.u64() }, (ctx, 
 export const victimReplied = spacetimedb.reducer(
   { victimHandle: t.string(), text: t.string() },
   (ctx, { victimHandle, text }) => {
+    const waiting = awaitingCheckinFor(ctx, victimHandle);
+    if (waiting) {
+      applyCheckinReply(ctx, waiting, text);
+      return;
+    }
     const open = [...ctx.db.request.victimHandle.filter(victimHandle)]
       .filter((r) => r.state !== 'closed')
       .sort((a, b) => (a.createdAt.microsSinceUnixEpoch < b.createdAt.microsSinceUnixEpoch ? 1 : -1));
@@ -334,6 +404,7 @@ export const completeOutbox = spacetimedb.reducer(
         result: ok ? 'placing' : 'failed',
         dtmf: '',
         createdAt: ctx.timestamp,
+        checkinId: o.checkinId,
       });
     }
   }
@@ -423,4 +494,403 @@ export const resetDemo = spacetimedb.reducer((ctx) => {
   for (const r of [...ctx.db.request.iter()]) ctx.db.request.id.delete(r.id);
   for (const o of [...ctx.db.outbox.iter()]) ctx.db.outbox.id.delete(o.id);
   for (const c of [...ctx.db.call.iter()]) ctx.db.call.id.delete(c.id);
+  for (const c of [...ctx.db.checkin.iter()]) ctx.db.checkin.id.delete(c.id);
+  for (const s of [...ctx.db.storm.iter()]) ctx.db.storm.id.delete(s.id);
 });
+
+// ---------- Storm check-ins: logic and reducers (docs/checkin-plan.md) ----------
+type CheckinRow = ReturnType<Ctx['db']['checkin']['id']['find']> & {};
+type HouseholdRow = ReturnType<Ctx['db']['household']['id']['find']> & {};
+
+const FIRST = ['Maria', 'Harold', 'Dolores', 'Tom', 'Aisha', 'Gary', 'Dev', 'Carla', 'Walt', 'Calvin', 'Janelle', 'Frank',
+  'Ruth', 'Marcus', 'Edith', 'Priya', 'Luis', 'Kim', 'Hank', 'Joyce', 'Owen', 'Samir', 'Bea', 'Grace', 'Andre', 'Mei',
+  'Rosa', 'Darnell', 'Ingrid', 'Tariq', 'Nora', 'Victor', 'Lena', 'Ike', 'Opal', 'Chen', 'Fatima', 'Rhett', 'Yuki', 'Zora'];
+const LAST = ['Alvarez', 'Whitfield', 'Benton', 'Brandt', 'Rahman', 'Nguyen', 'Patel', 'Mendez', 'Pruitt', 'Ortiz', 'Brooks',
+  'Kowalski', 'Okafor', 'Hill', 'Larkin', 'Nair', 'Ortega', 'Park', 'Wilder', 'Tran', 'Gallagher', 'Haddad', 'Thompson',
+  'Delgado', 'Lee', 'Washington', 'Novak', 'Ibrahim', 'Sato', 'Reyes'];
+const STREETS = ['Willow Bend Dr', 'Oak Hollow Ln', 'Creekview Ct', 'Mesa Verde Dr', 'Lakeshore Pl', 'Pecan Grove Rd',
+  'Trinity Bend Rd', 'Riverside Ct', 'Cedar Run', 'Elm Fork Dr', 'Heritage St', 'Bluebonnet Ln', 'Park Tower Dr',
+  'Maple Crest', 'Sunrise Blvd', 'Willowbrook Ct', 'Prairie Wind Dr', 'Greenbriar Ln', 'Station St', 'Bell Ave'];
+const CITIES = ['Plano', 'Richardson', 'Garland', 'Dallas', 'Irving', 'Mesquite', 'Carrollton', 'Frisco', 'Allen', 'Rowlett'];
+const POLICIES = ['Home', 'Home + Auto', 'Renters', 'Condo'];
+
+function pick<T>(ctx: Ctx, xs: T[]): T {
+  return xs[ctx.random.integerInRange(0, xs.length - 1)];
+}
+const DEMO_SECOND = 1_000_000n; // fake replies land within real seconds so the demo moves
+
+/** What a fake household says when it needs help: first person, and true to its own record (age). */
+function helpMessage(ctx: Ctx, h: HouseholdRow): { text: string; facts: object } {
+  const age = h.age || null;
+  const options: { text: string; facts: object }[] = [
+    { text: "Power out, I'm on oxygen and my backup battery is almost dead", facts: { age, medical: ['oxygen'], hazards: ['no_power'], quotes: ['Power out', 'on oxygen'] } },
+    { text: 'Water is coming into the house, we are trapped upstairs', facts: { age, hazards: ['flooding', 'trapped'], quotes: ['Water is coming into the house', 'trapped upstairs'] } },
+    { text: 'My insulin needs the fridge and the power is out', facts: { age, medical: ['insulin'], hazards: ['no_power'], quotes: ['insulin', 'power is out'] } },
+    { text: 'I use a wheelchair and the elevator is out', facts: { age, medical: ['mobility'], quotes: ['wheelchair', 'elevator is out'] } },
+    { text: 'A tree came through the roof and part of the ceiling collapsed', facts: { age, hazards: ['collapse'], quotes: ['ceiling collapsed'] } },
+    { text: 'No power and no water since the storm hit', facts: { age, hazards: ['no_power', 'no_water'], quotes: ['No power', 'no water'] } },
+  ];
+  if (h.age > 0 && h.age <= 50) {
+    options.push({ text: "We have a baby and the power is out, it's getting cold", facts: { age, children: true, hazards: ['no_power'], quotes: ['a baby', 'power is out'] } });
+  }
+  return pick(ctx, options);
+}
+
+function activeStorm(ctx: Ctx) {
+  for (const s of ctx.db.storm.iter()) if (s.active) return s;
+  return undefined;
+}
+
+function getCheckin(ctx: Ctx, checkinId: bigint): CheckinRow {
+  const c = ctx.db.checkin.id.find(checkinId);
+  if (!c) throw new SenderError(`check-in ${checkinId} not found`);
+  return c;
+}
+
+function setCheckin(ctx: Ctx, c: CheckinRow, state: string) {
+  c.state = state;
+  c.updatedAt = ctx.timestamp;
+}
+
+const isAwaiting = (state: string) => (AWAITING as string[]).includes(state);
+
+function cancelCheckinOutbox(ctx: Ctx, checkinId: bigint) {
+  for (const o of [...ctx.db.outbox.iter()]) {
+    if (o.checkinId === checkinId && o.status === 'queued') ctx.db.outbox.id.update({ ...o, status: 'cancelled' });
+  }
+}
+
+/** The check-in still chasing this phone in the active storm, if any. */
+function awaitingCheckinFor(ctx: Ctx, handle: string): CheckinRow | undefined {
+  const s = activeStorm(ctx);
+  if (!s) return undefined;
+  for (const h of ctx.db.household.handle.filter(handle)) {
+    for (const c of ctx.db.checkin.householdId.filter(h.id)) {
+      if (c.stormId === s.id && isAwaiting(c.state)) return c;
+    }
+  }
+  return undefined;
+}
+
+/** "Needs help": open a ranked report (the existing request pipeline) for this household. */
+function openReport(ctx: Ctx, c: CheckinRow, h: HouseholdRow, text: string) {
+  if (c.requestId !== 0n) return;
+  const r = newRequest(ctx, {
+    victimHandle: h.handle,
+    spaceId: h.spaceId,
+    photonSenderId: h.photonSenderId,
+    platform: h.platform,
+    rawText: text,
+  });
+  if (h.real) {
+    enqueue(ctx, r.id, 'extract_facts', { text });
+  } else {
+    // Fake households "say" a message that fits them, with facts filled in so they rank.
+    const s = helpMessage(ctx, h);
+    r.rawText = s.text;
+    applyFacts(r, JSON.stringify(s.facts));
+    r.factsStatus = 'done';
+    setState(ctx, r, 'waiting');
+    save(ctx, r);
+  }
+  c.requestId = r.id;
+}
+
+function applyCheckinReply(ctx: Ctx, c: CheckinRow, text: string) {
+  const h = ctx.db.household.id.find(c.householdId);
+  if (!h) throw new SenderError(`household ${c.householdId} not found`);
+  c.reply = text;
+  cancelCheckinOutbox(ctx, c.id);
+  const next = checkinAfterReply(text);
+  setCheckin(ctx, c, next);
+  if (next === 'needs_help') openReport(ctx, c, h, text.trim() === '2' ? 'Replied 2 to the storm alert: needs help' : text);
+  ctx.db.checkin.id.update(c);
+}
+
+function latestCheckinCall(ctx: Ctx, checkinId: bigint) {
+  return [...ctx.db.call.iter()]
+    .filter((x) => x.checkinId === checkinId)
+    .sort((a, b) => (a.createdAt.microsSinceUnixEpoch < b.createdAt.microsSinceUnixEpoch ? 1 : -1))[0];
+}
+
+/** Every second: walk check-ins still waiting for a reply in the active storm. */
+function tickCheckins(ctx: Ctx) {
+  const s = activeStorm(ctx);
+  if (!s) return;
+  const t0 = now(ctx);
+  for (const state of AWAITING) {
+    for (const c of [...ctx.db.checkin.byState.filter(state)]) {
+      if (c.stormId !== s.id || c.claimedBy) continue;
+      const h = ctx.db.household.id.find(c.householdId);
+      if (!h) continue;
+
+      // Fake households "reply" at their rolled time; silent ones walk the whole ladder.
+      if (!h.real && c.simFate !== 'silent' && t0 >= c.simReplyAt.microsSinceUnixEpoch) {
+        applyCheckinReply(ctx, c, c.simFate === 'safe' ? '1' : '2');
+        continue;
+      }
+
+      let latestCall = null;
+      if (h.real && c.state === 'called') {
+        const call = latestCheckinCall(ctx, c.id);
+        if (call) latestCall = { result: call.result, ageMicros: t0 - call.createdAt.microsSinceUnixEpoch };
+      }
+
+      const action = decideCheckin(c.state, t0 - c.updatedAt.microsSinceUnixEpoch, latestCall);
+      if (!action) continue;
+      setCheckin(ctx, c, action.state);
+      if (action.outbox === 'send_text') {
+        c.textsSent += 1;
+        if (h.real) {
+          enqueue(ctx, 0n, 'send_text', { platform: h.platform, to: h.handle, spaceId: h.spaceId, senderId: h.photonSenderId, text: STORM_RETEXT }, c.id);
+        }
+      } else if (action.outbox === 'place_call') {
+        c.callsPlaced += 1;
+        if (h.real) enqueue(ctx, 0n, 'place_call', { platform: h.platform, to: h.handle, checkinId: c.id.toString() }, c.id);
+      }
+      ctx.db.checkin.id.update(c);
+    }
+  }
+}
+
+/** Admin: n fake policyholders across the cities. They already joined storm alerts. */
+export const seedHouseholds = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
+  requireAdmin(ctx, 'Seed households');
+  const count = Math.min(n, 5000);
+  const start = Number(ctx.db.household.count());
+  for (let i = 0; i < count; i++) {
+    ctx.db.household.insert({
+      id: 0n,
+      name: `${pick(ctx, FIRST)} ${pick(ctx, LAST)}`,
+      handle: `household-${start + i}`,
+      platform: 'synthetic',
+      spaceId: '',
+      photonSenderId: '',
+      address: `${ctx.random.integerInRange(100, 9999)} ${pick(ctx, STREETS)}`,
+      city: pick(ctx, CITIES),
+      age: ctx.random.integerInRange(19, 94),
+      policy: pick(ctx, POLICIES),
+      real: false,
+    });
+  }
+});
+
+/** Admin (or the bridge, once it is an admin): a real phone that joined storm alerts. Same handle updates it. */
+export const enrollHousehold = spacetimedb.reducer(
+  { name: t.string(), handle: t.string(), city: t.string(), platform: t.string(), spaceId: t.string(), photonSenderId: t.string() },
+  (ctx, { name, handle, city, platform, spaceId, photonSenderId }) => {
+    requireAdmin(ctx, 'Enroll');
+    const clean = handle.trim();
+    if (!clean) throw new SenderError('phone or handle required');
+    const existing = [...ctx.db.household.handle.filter(clean)][0];
+    if (existing) {
+      ctx.db.household.id.update({
+        ...existing, name: name.trim() || existing.name, city: city.trim() || existing.city, platform, spaceId, photonSenderId, real: true,
+      });
+      return;
+    }
+    ctx.db.household.insert({
+      id: 0n,
+      name: name.trim() || clean,
+      handle: clean,
+      platform,
+      spaceId,
+      photonSenderId,
+      address: 'Team phone',
+      city: city.trim() || pick(ctx, CITIES),
+      age: 0,
+      policy: 'Home',
+      real: true,
+    });
+  }
+);
+
+/** Admin: remove every household, storm and check-in. */
+export const clearHouseholds = spacetimedb.reducer((ctx) => {
+  requireAdmin(ctx, 'Clear households');
+  for (const c of [...ctx.db.checkin.iter()]) ctx.db.checkin.id.delete(c.id);
+  for (const s of [...ctx.db.storm.iter()]) ctx.db.storm.id.delete(s.id);
+  for (const h of [...ctx.db.household.iter()]) ctx.db.household.id.delete(h.id);
+});
+
+function closeStorm(ctx: Ctx, stormId: bigint) {
+  const row = ctx.db.storm.id.find(stormId);
+  if (row) ctx.db.storm.id.update({ ...row, active: false });
+  for (const c of [...ctx.db.checkin.stormId.filter(stormId)]) {
+    cancelCheckinOutbox(ctx, c.id); // nothing from an ended storm goes out later
+    if (isAwaiting(c.state)) {
+      setCheckin(ctx, c, 'no_reply'); // not "closed": nobody has reached them
+      ctx.db.checkin.id.update(c);
+    }
+  }
+}
+
+/**
+ * Admin: a storm hits 2–3 random cities and everyone who lives there gets the alert.
+ * If team phones are enrolled, one of their cities is always hit so a demo phone buzzes.
+ */
+export const startStorm = spacetimedb.reducer((ctx) => {
+  requireAdmin(ctx, 'Start storm');
+  const old = activeStorm(ctx);
+  if (old) closeStorm(ctx, old.id);
+
+  const all = [...ctx.db.household.iter()];
+  if (all.length === 0) throw new SenderError('no households yet: seed some first');
+  const cities = [...new Set(all.map((h) => h.city))];
+  const hit = new Set<string>();
+  const real = all.filter((h) => h.real);
+  if (real.length) hit.add(pick(ctx, real).city);
+  const want = Math.min(cities.length, ctx.random.integerInRange(2, 3));
+  while (hit.size < want) hit.add(pick(ctx, cities));
+  const s = ctx.db.storm.insert({ id: 0n, cities: [...hit].join(', '), startedAt: ctx.timestamp, active: true });
+
+  const t0 = now(ctx);
+  for (const h of all) {
+    if (!hit.has(h.city)) continue;
+    let simFate = '';
+    let replyIn = 0n;
+    if (!h.real) {
+      const roll = ctx.random();
+      simFate = roll < 0.6 ? 'safe' : roll < 0.7 ? 'help' : 'silent';
+      replyIn = BigInt(ctx.random.integerInRange(2, 14)) * DEMO_SECOND;
+    }
+    const c = ctx.db.checkin.insert({
+      id: 0n,
+      stormId: s.id,
+      householdId: h.id,
+      state: 'texted',
+      textsSent: 1,
+      callsPlaced: 0,
+      reply: '',
+      claimedBy: undefined,
+      requestId: 0n,
+      simFate,
+      simReplyAt: new Timestamp(t0 + replyIn),
+      createdAt: ctx.timestamp,
+      updatedAt: ctx.timestamp,
+    });
+    if (h.real) {
+      enqueue(ctx, 0n, 'send_text', { platform: h.platform, to: h.handle, spaceId: h.spaceId, senderId: h.photonSenderId, text: STORM_TEXT }, c.id);
+    }
+  }
+});
+
+/** Admin: the storm is over; stop chasing anyone still silent. */
+export const endStorm = spacetimedb.reducer((ctx) => {
+  requireAdmin(ctx, 'End storm');
+  const s = activeStorm(ctx);
+  if (s) closeStorm(ctx, s.id);
+});
+
+/** A responder takes a household. One winner; chasing stops; its report (if any) is claimed too. */
+export const claimCheckin = spacetimedb.reducer({ checkinId: t.u64() }, (ctx, { checkinId }) => {
+  const c = getCheckin(ctx, checkinId);
+  if (c.claimedBy) {
+    const who = ctx.db.responder.identity.find(c.claimedBy)?.name ?? 'another responder';
+    throw new SenderError(`already claimed by ${who}`);
+  }
+  if (c.state === 'closed' || c.state === 'safe') throw new SenderError(`check-in is ${c.state}`);
+  c.claimedBy = ctx.sender;
+  setCheckin(ctx, c, 'claimed');
+  cancelCheckinOutbox(ctx, c.id);
+  ctx.db.checkin.id.update(c);
+  const r = c.requestId !== 0n ? ctx.db.request.id.find(c.requestId) : undefined;
+  if (r && !r.claimedBy && r.state !== 'closed') {
+    r.claimedBy = ctx.sender;
+    setState(ctx, r, 'claimed');
+    cancelCheckins(ctx, r.id);
+    save(ctx, r);
+  }
+});
+
+export const releaseCheckin = spacetimedb.reducer({ checkinId: t.u64() }, (ctx, { checkinId }) => {
+  const c = getCheckin(ctx, checkinId);
+  if (!c.claimedBy) return;
+  if (!c.claimedBy.isEqual(ctx.sender)) throw new SenderError('only the claimer can release');
+  c.claimedBy = undefined;
+  setCheckin(ctx, c, c.requestId !== 0n ? 'needs_help' : 'urgent');
+  ctx.db.checkin.id.update(c);
+  const r = c.requestId !== 0n ? ctx.db.request.id.find(c.requestId) : undefined;
+  if (r && r.claimedBy && r.claimedBy.isEqual(ctx.sender)) {
+    r.claimedBy = undefined;
+    setState(ctx, r, 'waiting');
+    save(ctx, r);
+  }
+});
+
+export const resolveCheckin = spacetimedb.reducer({ checkinId: t.u64() }, (ctx, { checkinId }) => {
+  const c = getCheckin(ctx, checkinId);
+  cancelCheckinOutbox(ctx, c.id);
+  setCheckin(ctx, c, 'closed');
+  ctx.db.checkin.id.update(c);
+  const r = c.requestId !== 0n ? ctx.db.request.id.find(c.requestId) : undefined;
+  if (r && r.state !== 'closed') {
+    setState(ctx, r, 'closed');
+    cancelCheckins(ctx, r.id);
+    save(ctx, r);
+  }
+});
+
+/** /victim-sim: play a household's reply ("1", "2", or any text) without a real phone. */
+export const simulateReply = spacetimedb.reducer({ checkinId: t.u64(), text: t.string() }, (ctx, { checkinId, text }) => {
+  const c = getCheckin(ctx, checkinId);
+  if (!isAwaiting(c.state)) throw new SenderError(`check-in is ${c.state}, not waiting for a reply`);
+  applyCheckinReply(ctx, c, text);
+});
+
+/** Bridge: result of a check-in call (answered + 1 safe, 2 help; anything else urgent). */
+export const checkinCallResult = spacetimedb.reducer(
+  { checkinId: t.u64(), result: t.string(), dtmf: t.string() },
+  (ctx, { checkinId, result, dtmf }) => {
+    const call = latestCheckinCall(ctx, checkinId);
+    if (call) ctx.db.call.id.update({ ...call, result, dtmf });
+    const c = getCheckin(ctx, checkinId);
+    if (c.state !== 'called') return; // claimed/closed meanwhile: record only
+    const next = checkinAfterCall(result, dtmf);
+    setCheckin(ctx, c, next);
+    if (next === 'needs_help') {
+      const h = ctx.db.household.id.find(c.householdId);
+      if (h) openReport(ctx, c, h, 'Pressed 2 on the check-in call: needs help');
+    }
+    ctx.db.checkin.id.update(c);
+  }
+);
+
+/**
+ * An inbound message from a phone. Remembers its Photon conversation on its household (so storm
+ * alerts can be sent), treats it as the reply to an open check-in, or signs the phone up on "JOIN".
+ * Returns true when the message was handled here and should not become a new report.
+ */
+function routeHouseholdMessage(
+  ctx: Ctx,
+  m: { victimHandle: string; spaceId: string; photonSenderId: string; platform: string; rawText: string }
+): boolean {
+  const h = [...ctx.db.household.handle.filter(m.victimHandle)][0];
+  if (h && m.platform !== 'sim' && (m.spaceId || m.photonSenderId)) {
+    ctx.db.household.id.update({ ...h, platform: m.platform, spaceId: m.spaceId, photonSenderId: m.photonSenderId, real: true });
+  }
+  const waiting = awaitingCheckinFor(ctx, m.victimHandle);
+  if (waiting) {
+    applyCheckinReply(ctx, waiting, m.rawText);
+    return true;
+  }
+  if (/^\s*join\s*$/i.test(m.rawText)) {
+    if (!h) {
+      ctx.db.household.insert({
+        id: 0n,
+        name: m.victimHandle,
+        handle: m.victimHandle,
+        platform: m.platform,
+        spaceId: m.spaceId,
+        photonSenderId: m.photonSenderId,
+        address: 'Team phone',
+        city: pick(ctx, CITIES),
+        age: 0,
+        policy: 'Home',
+        real: true,
+      });
+    }
+    return true;
+  }
+  return false;
+}
