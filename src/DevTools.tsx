@@ -16,6 +16,8 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [sureClear, setSureClear] = useState(false);
+  const [sureResetPhones, setSureResetPhones] = useState(false);
+  const [households] = useTable(tables.household);
   const mode = useMode();
 
   const me = identity?.toHexString() ?? '';
@@ -60,9 +62,18 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
           {stormOn ? (
             <button className="btn danger" onClick={() => run((c) => c.reducers.endStorm({})).then(ok('Storm ended'))}>End storm</button>
           ) : (
-            <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started: alerts sent (up to 20 fake households + team phones)'))}>Start storm</button>
+            <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started in Richardson: alerts sent to every team phone'))}>Start storm</button>
           )}
-          <p className="meta">Team phones join by texting JOIN to the Photon number.</p>
+          <p className="meta">
+            Team phones join by texting JOIN to the Photon number. Joined now: {households.filter((h) => h.real).length}
+          </p>
+          {sureResetPhones ? (
+            <button className="btn danger solid" onClick={() => { setSureResetPhones(false); void run((c) => c.reducers.resetTeamPhones({})).then(ok('Team phones reset: text JOIN again')); }}>
+              Really forget all team phones?
+            </button>
+          ) : (
+            <button className="btn danger" onClick={() => setSureResetPhones(true)}>Reset team phones</button>
+          )}
           {onInject && <button className="btn" onClick={onInject}>Inject 2,000 reports</button>}
           <button className="btn danger" onClick={onAskReset}>Reset demo</button>
           {sureClear ? (

@@ -49,6 +49,7 @@ import ReleaseCheckinReducer from "./release_checkin_reducer";
 import ReleaseRequestReducer from "./release_request_reducer";
 import RemoveAdminReducer from "./remove_admin_reducer";
 import ResetDemoReducer from "./reset_demo_reducer";
+import ResetTeamPhonesReducer from "./reset_team_phones_reducer";
 import ResolveCheckinReducer from "./resolve_checkin_reducer";
 import ResolveRequestReducer from "./resolve_request_reducer";
 import SeedHouseholdsReducer from "./seed_households_reducer";
@@ -209,6 +210,7 @@ const reducersSchema = __reducers(
   __reducerSchema("release_request", ReleaseRequestReducer),
   __reducerSchema("remove_admin", RemoveAdminReducer),
   __reducerSchema("reset_demo", ResetDemoReducer),
+  __reducerSchema("reset_team_phones", ResetTeamPhonesReducer),
   __reducerSchema("resolve_checkin", ResolveCheckinReducer),
   __reducerSchema("resolve_request", ResolveRequestReducer),
   __reducerSchema("seed_households", SeedHouseholdsReducer),

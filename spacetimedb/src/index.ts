@@ -3,7 +3,7 @@ import { schema, table, t, SenderError, type InferSchema, type ReducerCtx } from
 import { ScheduleAt, Timestamp } from 'spacetimedb';
 import {
   STORM_FAKE_MAX,
-  STORM_AUTO_SEED,
+  STORM_AREA,
   CHECKIN_TEXT,
   OPEN_UNCLAIMED,
   decideTick,
@@ -673,7 +673,7 @@ function seedFake(ctx: Ctx, n: number) {
       spaceId: '',
       photonSenderId: '',
       address: `${ctx.random.integerInRange(100, 9999)} ${pick(ctx, STREETS)}`,
-      city: pick(ctx, CITIES),
+      city: STORM_AREA,
       age: ctx.random.integerInRange(19, 94),
       policy: pick(ctx, POLICIES),
       real: false,
@@ -703,13 +703,34 @@ export const enrollHousehold = spacetimedb.reducer(
       spaceId,
       photonSenderId,
       address: 'Team phone',
-      city: city.trim() || pick(ctx, CITIES),
+      city: city.trim() || STORM_AREA,
       age: 0,
       policy: 'Home',
       real: true,
     });
   }
 );
+
+/**
+ * Admin: forget every team phone so phones can test JOIN again. Removes their check-ins and closes
+ * their open reports (so a new JOIN isn't read as a reply). Fake households and storms stay.
+ */
+export const resetTeamPhones = spacetimedb.reducer((ctx) => {
+  requireAdmin(ctx, 'Reset team phones');
+  for (const h of [...ctx.db.household.iter()].filter((x) => x.real)) {
+    for (const c of [...ctx.db.checkin.householdId.filter(h.id)]) {
+      cancelCheckinOutbox(ctx, c.id);
+      ctx.db.checkin.id.delete(c.id);
+    }
+    for (const r of [...ctx.db.request.victimHandle.filter(h.handle)]) {
+      if (r.state === 'closed') continue;
+      setState(ctx, r, 'closed');
+      cancelCheckins(ctx, r.id);
+      save(ctx, r);
+    }
+    ctx.db.household.id.delete(h.id);
+  }
+});
 
 /** Admin: remove every household, storm and check-in. */
 export const clearHouseholds = spacetimedb.reducer((ctx) => {
@@ -740,24 +761,23 @@ export const startStorm = spacetimedb.reducer((ctx) => {
   const old = activeStorm(ctx);
   if (old) closeStorm(ctx, old.id);
 
-  if ([...ctx.db.household.iter()].filter((h) => !h.real).length < STORM_FAKE_MAX) seedFake(ctx, STORM_AUTO_SEED);
-  const all = [...ctx.db.household.iter()];
-  const cities = [...new Set(all.map((h) => h.city))];
-  const hit = new Set<string>();
-  const real = all.filter((h) => h.real);
-  if (real.length) hit.add(pick(ctx, real).city);
-  const want = Math.min(cities.length, ctx.random.integerInRange(2, 3));
-  while (hit.size < want) hit.add(pick(ctx, cities));
-  const s = ctx.db.storm.insert({ id: 0n, cities: [...hit].join(', '), startedAt: ctx.timestamp, active: true });
+  // Every team phone lives in the storm area (older rows may say another city).
+  for (const h of [...ctx.db.household.iter()]) {
+    if (h.real && h.city !== STORM_AREA) ctx.db.household.id.update({ ...h, city: STORM_AREA });
+  }
+  const fakesInArea = () => [...ctx.db.household.iter()].filter((h) => !h.real && h.city === STORM_AREA);
+  const have = fakesInArea().length;
+  if (have < STORM_FAKE_MAX) seedFake(ctx, STORM_FAKE_MAX - have);
+  const s = ctx.db.storm.insert({ id: 0n, cities: STORM_AREA, startedAt: ctx.timestamp, active: true });
 
-  // Every real phone in the hit cities, plus at most STORM_FAKE_MAX fake households (random ones).
-  const inZone = all.filter((h) => hit.has(h.city));
-  const fakes = inZone.filter((h) => !h.real);
+  // Every team phone, plus at most STORM_FAKE_MAX fake households in the area (random ones). All alerted at once.
+  const real = [...ctx.db.household.iter()].filter((h) => h.real);
+  const fakes = fakesInArea();
   for (let i = fakes.length - 1; i > 0; i--) {
     const j = ctx.random.integerInRange(0, i);
     [fakes[i], fakes[j]] = [fakes[j], fakes[i]];
   }
-  const alerted = [...inZone.filter((h) => h.real), ...fakes.slice(0, STORM_FAKE_MAX)];
+  const alerted = [...real, ...fakes.slice(0, STORM_FAKE_MAX)];
 
   const t0 = now(ctx);
   for (const h of alerted) {
@@ -898,7 +918,7 @@ function routeHouseholdMessage(
         spaceId: m.spaceId,
         photonSenderId: m.photonSenderId,
         address: 'Team phone',
-        city: pick(ctx, CITIES),
+        city: STORM_AREA,
         age: 0,
         policy: 'Home',
         real: true,
