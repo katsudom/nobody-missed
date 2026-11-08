@@ -238,6 +238,8 @@ export const STORM_FAKE_MAX = 20;
 /** If a storm starts with too few fake households, seed this many first. */
 export const STORM_AUTO_SEED = 100;
 export const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if you need help.';
+/** Sent back to a phone after a successful JOIN. */
+export const JOIN_REPLY = "You've successfully joined!";
 
 /** Re-text if no reply to the first alert. */
 export const S1_RETEXT = 25n * UNIT;

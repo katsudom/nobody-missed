@@ -17,6 +17,7 @@ import {
   totalScore,
   type Tier,
   AWAITING,
+  JOIN_REPLY,
   STORM_RETEXT,
   STORM_TEXT,
   checkinAfterCall,
@@ -1133,6 +1134,7 @@ function routeHouseholdMessage(
         real: true,
       });
     }
+    enqueue(ctx, 0n, 'send_text', { platform: m.platform, to: m.victimHandle, spaceId: m.spaceId, senderId: m.photonSenderId, text: JOIN_REPLY });
     return true;
   }
   return false;
