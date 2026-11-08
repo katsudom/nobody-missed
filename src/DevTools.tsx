@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import { useRun, useToast } from './lib';
-import { setMode, useMode } from './mode';
 
 // Small floating dev panel (bottom-right). Only admins see it; the server also refuses
 // these actions from anyone who isn't an admin.
@@ -53,7 +52,6 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const [tab, setTabState] = useState<Tab>(readTab);
   const [sureResetPhones, setSureResetPhones] = useState(false);
   const [households] = useTable(tables.household);
-  const mode = useMode();
 
   const me = identity?.toHexString() ?? '';
   // Local sandbox (`npm run sandbox:publish`): every action is open to anyone on this laptop.
@@ -122,16 +120,6 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
           <div className="devbody" role="tabpanel">
             {shownTab === 'demo' && (
               <>
-                <Section label="What this browser shows" note="Only changes this browser.">
-                  <div className="devmode" role="radiogroup" aria-label="What the boards show">
-                    <button role="radio" aria-checked={mode === 'real'} className={`devmode__opt${mode === 'real' ? ' is-on' : ''}`} onClick={() => setMode('real')}>
-                      Real phones
-                    </button>
-                    <button role="radio" aria-checked={mode === 'all'} className={`devmode__opt${mode === 'all' ? ' is-on' : ''}`} onClick={() => setMode('all')}>
-                      Fake data
-                    </button>
-                  </div>
-                </Section>
                 <Section label="Storm" note={sandbox ? 'Only this laptop: nobody else sees it.' : 'Shared database: affects everyone.'}>
                   {stormOn ? (
                     <Action tone="danger" title="End storm" hint="Stops check-ins and turns calls off" onClick={() => run((c) => c.reducers.endStorm({})).then(ok('Storm ended'))} />

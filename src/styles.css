@@ -13,7 +13,7 @@ h1 { margin: 0; font-size: var(--fs-2xl); letter-spacing: -.01em; white-space: n
 h2 { margin: 0; font-size: var(--fs-lg); }
 .spacer { flex: 1; }
 .mono { }
-.timer, .meta, .tab span, .live, .modetag, .stormchip, .simtag, .stamp, .gnum, .score, .pct, .qstat b { font-variant-numeric: tabular-nums; }
+.timer, .meta, .tab span, .live, .stormchip, .simtag, .stamp, .gnum, .score, .pct, .qstat b { font-variant-numeric: tabular-nums; }
 
 .board { max-width: 1700px; margin: 0 auto; padding: 20px 28px 40px; display: flex; flex-direction: column; gap: 18px; }
 .head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 12px; }
@@ -313,12 +313,6 @@ a.btn { text-decoration: none; display: inline-block; }
 .tbtn:focus-visible { outline: 3px solid #8fb0ff; outline-offset: 2px; }
 
 /* Dev tools: Real phones / Fake data switch, and the header tag that shows which one is on */
-.devmode { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
-.devmode__opt { font: inherit; font-size: var(--fs-sm); font-weight: 700; padding: 7px 10px; border-radius: 7px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
-.devmode__opt.is-on { background: #2a2a2e; color: var(--text); }
-.devmode__opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.modetag { font-size: var(--fs-xs); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; white-space: nowrap; }
-.modetag.is-real { color: var(--green); border-color: #1f5c40; }
 
 /* Priority level badge: P1 / P2 / P3 (replaces the urgency number) */
 .lvl { display: inline-block; min-width: 38px; text-align: center; font-size: var(--fs-sm); font-weight: 700; padding: 3px 9px; border-radius: 8px; font-variant-numeric: tabular-nums; }
