@@ -308,6 +308,8 @@ export const tick = spacetimedb.reducer({ onSchedule: tickTimer }, { timer: tick
 export const submitRequest = spacetimedb.reducer(
   { victimHandle: t.string(), spaceId: t.string(), photonSenderId: t.string(), platform: t.string(), rawText: t.string() },
   (ctx, args) => {
+    // Storm check-ins (docs/checkin-plan.md): a household's message is first a check-in reply or a JOIN.
+    if (routeHouseholdMessage(ctx, args)) return;
     const r = newRequest(ctx, args);
     enqueue(ctx, r.id, 'extract_facts', { text: r.rawText });
   }
@@ -853,3 +855,42 @@ export const checkinCallResult = spacetimedb.reducer(
     ctx.db.checkin.id.update(c);
   }
 );
+
+/**
+ * An inbound message from a phone. Remembers its Photon conversation on its household (so storm
+ * alerts can be sent), treats it as the reply to an open check-in, or signs the phone up on "JOIN".
+ * Returns true when the message was handled here and should not become a new report.
+ */
+function routeHouseholdMessage(
+  ctx: Ctx,
+  m: { victimHandle: string; spaceId: string; photonSenderId: string; platform: string; rawText: string }
+): boolean {
+  const h = [...ctx.db.household.handle.filter(m.victimHandle)][0];
+  if (h && m.platform !== 'sim' && (m.spaceId || m.photonSenderId)) {
+    ctx.db.household.id.update({ ...h, platform: m.platform, spaceId: m.spaceId, photonSenderId: m.photonSenderId, real: true });
+  }
+  const waiting = awaitingCheckinFor(ctx, m.victimHandle);
+  if (waiting) {
+    applyCheckinReply(ctx, waiting, m.rawText);
+    return true;
+  }
+  if (/^\s*join\s*$/i.test(m.rawText)) {
+    if (!h) {
+      ctx.db.household.insert({
+        id: 0n,
+        name: m.victimHandle,
+        handle: m.victimHandle,
+        platform: m.platform,
+        spaceId: m.spaceId,
+        photonSenderId: m.photonSenderId,
+        address: 'Team phone',
+        city: pick(ctx, CITIES),
+        age: 0,
+        policy: 'Home',
+        real: true,
+      });
+    }
+    return true;
+  }
+  return false;
+}
