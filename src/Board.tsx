@@ -1,5 +1,6 @@
 import { memo, useMemo, useRef, useState } from 'react';
 import DevTools from './DevTools';
+import PageTabs from './PageTabs';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
@@ -175,7 +176,7 @@ export default function Board() {
           <h1>Check-In Command Center</h1>
         </div>
         <span className="spacer" />
-        <a className="btn" href="#/board">Check-ins</a>
+        <PageTabs current="reports" />
       </header>
 
       <div className="cols">

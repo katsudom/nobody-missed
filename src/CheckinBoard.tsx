@@ -10,6 +10,7 @@ import StormRowT from './module_bindings/storm_table';
 import RequestRowT from './module_bindings/request_table';
 import { byLevel, Level, levelOf, mmss, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
 import DevTools from './DevTools';
+import PageTabs from './PageTabs';
 import { maskPhone } from './policyholders';
 
 type Checkin = Infer<typeof CheckinRowT>;
@@ -125,6 +126,7 @@ export default function CheckinBoard() {
           <div className="eyebrow">Nobody Missed · Emergency check-ins</div>
           <h1>Check-In Command Center</h1>
         </div>
+        <PageTabs current="board" />
         <span className="spacer" />
         <span className={`live ${isActive ? 'on' : ''}`} role="status">{isActive ? 'Live' : 'Reconnecting…'}</span>
         <StormChip storm={storm} now={now} inZone={total} />
