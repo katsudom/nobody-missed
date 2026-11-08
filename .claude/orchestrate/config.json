@@ -1,0 +1,4 @@
+{
+  "high_risk": ["spacetimedb/src/", "bridge/src/", ".github/", "vercel.json"],
+  "generated": ["src/module_bindings/"]
+}
