@@ -2,7 +2,7 @@
 // category tabs. Reference view only: it reads a public feed and changes nothing in the database.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
-import type { Feature, MultiPolygon, Polygon } from 'geojson';
+import type { Feature, MultiPolygon, Polygon, Position } from 'geojson';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import PageTabs from './PageTabs';
 
@@ -11,6 +11,10 @@ const ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual&message_
 const REFRESH_MS = 60_000;
 const MAX_ROWS = 200;
 const SEARCH_DELAY_MS = 250;
+const ZONE_BATCH = 6; // boundaries fetched at once, to stay polite to the NWS API
+const ZONE_TIMEOUT_MS = 15_000;
+// NWS marine zones, by their code's area prefix (e.g. PKZ642 is off Alaska; AKZ is Alaska's land).
+const MARINE_ZONE = /\/(AM|AN|GM|LC|LE|LH|LM|LO|LS|PH|PK|PM|PS|PZ|SL)Z\d+$/;
 
 // Mapbox paint values can't read CSS variables. RED, AMBER, BLUE and WATER match --red, --amber, --blue and --bg.
 const RED = '#ff3b6b';
@@ -37,6 +41,7 @@ interface Alert {
   ends: string | null;
   tornado: boolean;
   geometry: Polygon | MultiPolygon | null;
+  zones: string[]; // land zones only: the shape to draw when the alert has no geometry of its own
 }
 
 const CATEGORIES = [
@@ -63,7 +68,11 @@ function useAlerts() {
       const res = await fetch(ALERTS_URL, { signal, headers: { Accept: 'application/geo+json' } });
       if (!res.ok) throw new Error(`NWS ${res.status}`);
       const body = await res.json();
-      const next: Alert[] = (body.features ?? []).map((f: any) => ({
+      const isOnLand = (f: any) => {
+        const zones: string[] = f.properties.affectedZones ?? [];
+        return !zones.length || zones.some((z) => !MARINE_ZONE.test(z));
+      };
+      const next: Alert[] = (body.features ?? []).filter(isOnLand).map((f: any) => ({
         id: String(f.properties.id ?? f.id),
         event: String(f.properties.event ?? 'Alert'),
         areaDesc: String(f.properties.areaDesc ?? ''),
@@ -71,6 +80,7 @@ function useAlerts() {
         ends: f.properties.ends ?? f.properties.expires ?? null,
         tornado: /tornado/i.test(String(f.properties.event ?? '')),
         geometry: f.geometry ?? null,
+        zones: (f.properties.affectedZones ?? []).filter((z: string) => !MARINE_ZONE.test(z)),
       }));
       setAlerts(next.sort(byUrgency));
       setUpdatedAt(new Date());
@@ -88,6 +98,55 @@ function useAlerts() {
   }, [load]);
 
   return { alerts, status, updatedAt, retry: () => { setStatus('loading'); void load(); } };
+}
+
+function polygonsOf(g: any): Position[][][] {
+  if (g?.type === 'Polygon') return [g.coordinates];
+  if (g?.type === 'MultiPolygon') return g.coordinates;
+  if (g?.type === 'GeometryCollection') return g.geometries.flatMap(polygonsOf);
+  return [];
+}
+
+// A failed lookup returns null, so it isn't remembered and the next refresh tries again.
+async function fetchZone(url: string): Promise<[string, Position[][][]] | null> {
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/geo+json' }, signal: AbortSignal.timeout(ZONE_TIMEOUT_MS) });
+    if (!res.ok) return null;
+    return [url, polygonsOf((await res.json()).geometry)];
+  } catch {
+    return null;
+  }
+}
+
+// Many alerts (hurricanes included) name forecast zones instead of carrying a shape: draw those zones' boundaries.
+function useZoneShapes(alerts: Alert[]) {
+  const [shapes, setShapes] = useState(new Map<string, Position[][][]>());
+  const [loadingZones, setLoadingZones] = useState(false);
+  const fetching = useRef(false);
+
+  useEffect(() => {
+    if (fetching.current) return; // anything new waits for the next refresh
+    const todo = [...new Set(alerts.flatMap((a) => (a.geometry ? [] : a.zones)))].filter((z) => !shapes.has(z));
+    if (!todo.length) return;
+    fetching.current = true;
+    setLoadingZones(true);
+    void (async () => {
+      for (let i = 0; i < todo.length; i += ZONE_BATCH) {
+        const found = await Promise.all(todo.slice(i, i + ZONE_BATCH).map(fetchZone));
+        setShapes((old) => new Map([...old, ...found.filter((x) => x !== null)]));
+      }
+      fetching.current = false;
+      setLoadingZones(false);
+    })();
+  }, [alerts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const shaped = useMemo(() => alerts.map((a): Alert => {
+    if (a.geometry) return a;
+    const coordinates = a.zones.flatMap((z) => shapes.get(z) ?? []);
+    return coordinates.length ? { ...a, geometry: { type: 'MultiPolygon', coordinates } } : a;
+  }), [alerts, shapes]);
+
+  return { alerts: shaped, loadingZones };
 }
 
 function boundsOf(g: Alert['geometry']): mapboxgl.LngLatBounds | null {
@@ -191,7 +250,8 @@ function PlaceSearch({ onPick }: { onPick: (p: Place) => void }) {
 }
 
 export default function DisastersMap() {
-  const { alerts, status, updatedAt, retry } = useAlerts();
+  const { alerts: feed, status, updatedAt, retry } = useAlerts();
+  const { alerts, loadingZones } = useZoneShapes(feed);
   const [category, setCategory] = useState<Category>('all');
   const [selected, setSelected] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -360,11 +420,11 @@ export default function DisastersMap() {
                   {a.event}
                 </span>
                 <span className="dzarea">{a.areaDesc}</span>
-                <span className="meta">{endsLabel(a.ends)}{a.geometry ? '' : ' · No map shape'}</span>
+                <span className="meta">{endsLabel(a.ends)}{a.geometry ? '' : loadingZones ? ' · Loading map shape…' : ' · No map shape'}</span>
               </button>
             ))}
             {shown.length > MAX_ROWS && <p className="empty">Showing the first {MAX_ROWS} of {shown.length.toLocaleString()}.</p>}
-            {unmapped > 0 && <p className="meta">{unmapped.toLocaleString()} listed by county only, so they aren't drawn on the map.</p>}
+            {unmapped > 0 && !loadingZones && <p className="meta">{unmapped.toLocaleString()} couldn't be drawn on the map.</p>}
           </div>
         </section>
       </div>
