@@ -17,6 +17,9 @@ export const T2_CALL: Record<Tier, bigint> = {
   high: 10n * UNIT,
   normal: 10n * UNIT,
 };
+/** After the victim says "1" (still need help), wait this long before the next check-in text.
+ *  Longer than the first critical check-in so they aren't texted again right after answering. */
+export const T1_AFTER_REPLY = 10n * UNIT;
 /** Flag if the call never got placed (bridge down, ElevenLabs refused). */
 export const T3_CALL_NOT_PLACED = 5n * UNIT;
 /** Safety net for a call that was placed but never reported back. Real seconds: phones ring in real time. */
@@ -135,10 +138,12 @@ export function decideTick(
   tier: Tier,
   sinceStateMicros: bigint,
   latestCall: LatestCall,
-  synthetic: boolean
+  synthetic: boolean,
+  afterReply = false // true once a check-in was already sent and the victim answered "1"
 ): TickAction {
   if (synthetic) return null; // injected load rows only escalate; they never text or call
-  if (state === 'waiting' && sinceStateMicros >= T1_CHECKIN[tier]) {
+  const t1 = afterReply && T1_AFTER_REPLY > T1_CHECKIN[tier] ? T1_AFTER_REPLY : T1_CHECKIN[tier];
+  if (state === 'waiting' && sinceStateMicros >= t1) {
     return { state: 'checkin_text_sent', outbox: 'send_text' };
   }
   if (state === 'checkin_text_sent' && sinceStateMicros >= T2_CALL[tier]) {

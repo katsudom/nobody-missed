@@ -7,6 +7,7 @@ import {
   escalationFor,
   totalScore,
   decideTick,
+  T1_AFTER_REPLY,
   stateAfterCall,
   stateAfterReply,
   ESCALATION_CAP,
@@ -119,4 +120,12 @@ test('victim replies', () => {
   assert.equal(stateAfterReply(' 2 '), 'closed');
   assert.equal(stateAfterReply('1'), 'waiting');
   assert.equal(stateAfterReply('water is rising'), 'waiting');
+});
+
+test('after a "1" reply, the next check-in waits T1_AFTER_REPLY, not the short critical T1', () => {
+  assert.equal(decideTick('waiting', 'critical', T1_CHECKIN.critical, null, false, true), null);
+  assert.deepEqual(decideTick('waiting', 'critical', T1_AFTER_REPLY, null, false, true),
+    { state: 'checkin_text_sent', outbox: 'send_text' });
+  // normal tier's own T1 is already longer, so it keeps it
+  assert.equal(decideTick('waiting', 'normal', T1_AFTER_REPLY, null, false, true), null);
 });

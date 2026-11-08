@@ -217,7 +217,7 @@ export const tick = spacetimedb.reducer({ onSchedule: tickTimer }, { timer: tick
         if (calls[0]) latestCall = { result: calls[0].result, ageMicros: t0 - calls[0].createdAt.microsSinceUnixEpoch };
       }
 
-      const action = decideTick(r.state, r.tier as Tier, t0 - r.updatedAt.microsSinceUnixEpoch, latestCall, isSynthetic(r));
+      const action = decideTick(r.state, r.tier as Tier, t0 - r.updatedAt.microsSinceUnixEpoch, latestCall, isSynthetic(r), r.checkinsSent > 0);
       if (action) {
         setState(ctx, r, action.state);
         if (action.outbox === 'send_text') {
