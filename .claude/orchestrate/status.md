@@ -1,7 +1,7 @@
 # Status (2026-11-07)
 
 ## Goal
-Steps 1-8 of docs/HANDOFF-PROMPT.md. Steps 1-6 DONE + storm check-ins live. Next: Step 7 (phone calls), Dominic said go (new session).
+Steps 1-8 of docs/HANDOFF-PROMPT.md. Steps 1-7 DONE (calls verified 2026-11-07). Next: Step 8 demo (docs/demo-plan.md), after Dominic's go.
 
 ## Done
 - 1 tooling, 2 scaffold, 3 module (published to Maincloud `nobody-missed`), 4 board (Dorothy's PRs #1 + #13, live on Vercel), 5 Claude bridge (verified live).
@@ -29,7 +29,9 @@ Steps 1-8 of docs/HANDOFF-PROMPT.md. Steps 1-6 DONE + storm check-ins live. Next
 - Step 7: ElevenLabs outbound call via Photon SIP (needs a purchased Photon SMS/voice number; 15 free call minutes, few test calls). Then Step 8 (demo script SPEC sec 2).
 
 ## Running
-- Bridge: stopped at handoff. The next session starts it in its own terminal tab (`cd bridge; npm start`) so it can read the log. Only ONE bridge at a time (two pollers would double-submit). After any module publish that changes tables, restart it (old bindings crash).
+- Step 7 verified: Photon voice number -> ElevenLabs SIP trunk, agent 'Welfare Check' (first message typed in the agent, storm script). Storm silent -> call rang; pressed 1 -> safe, pressed 2 -> needs help + report. Calls switch: table setting key 'calls', admin-only setCalls, off by default, End storm turns it off. Wording: 'automated emergency check-in' (no State Farm).
+- Known: agent is very interruptible (crowd noise); Dominic to turn off 'Interruptible' in ElevenLabs. After storm 'needs help' the report also runs the old request chase (text + call) quickly; ask Dominic if that's wanted.
+- Bridge: run `cd bridge; .un.ps1` (auto-restarts on crash) in the watching session's own tab so it can read the log. Only ONE bridge at a time (two pollers would double-submit). After any module publish that changes tables, restart it (old bindings crash).
 
 ## Team
 - Dorothy (GitHub wonillionaire): storm check-ins + current site; bakudan01 made #15 (dropped); Kevin: top bar/name prompt/side panel; Will: victim-sim page + pitch. Teammates PR, Dominic merges (squash).
