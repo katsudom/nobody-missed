@@ -63,7 +63,6 @@ function byUrgency(a: Alert, b: Alert) {
 function useAlerts() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
-  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -85,7 +84,6 @@ function useAlerts() {
         zones: (f.properties.affectedZones ?? []).filter((z: string) => !MARINE_ZONE.test(z)),
       }));
       setAlerts(next.sort(byUrgency));
-      setUpdatedAt(new Date());
       setStatus('ok');
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setStatus('error'); // keep the last good list on screen
@@ -99,7 +97,7 @@ function useAlerts() {
     return () => { ctl.abort(); clearInterval(timer); };
   }, [load]);
 
-  return { alerts, status, updatedAt, retry: () => { setStatus('loading'); void load(); } };
+  return { alerts, status, retry: () => { setStatus('loading'); void load(); } };
 }
 
 function polygonsOf(g: any): Position[][][] {
@@ -252,7 +250,7 @@ function PlaceSearch({ onPick }: { onPick: (p: Place) => void }) {
 }
 
 export default function DisastersMap() {
-  const { alerts: feed, status, updatedAt, retry } = useAlerts();
+  const { alerts: feed, status, retry } = useAlerts();
   const { alerts, loadingZones } = useZoneShapes(feed);
   const weather = useWeatherAlerts();
   const [category, setCategory] = useState<Category>('all');
@@ -358,10 +356,6 @@ export default function DisastersMap() {
           <h1>Disaster Map</h1>
         </div>
         <PageTabs current="disasters" />
-        <span className="spacer" />
-        <span className="simtag" role="status">
-          National Weather Service{updatedAt ? ` · updated ${updatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
-        </span>
       </header>
 
       <WeatherWarnings weather={weather} />
