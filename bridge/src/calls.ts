@@ -10,7 +10,7 @@ export const callsEnabled = () => !!(KEY && AGENT && NUMBER);
 // The agent's first message in the ElevenLabs dashboard is {{first_message}}; the bridge fills it in.
 // Both scripts keep the same keys: 1 / yes, 2 / no.
 export const STORM_CALL =
-  'This is an automated storm check-in from State Farm. If you are safe, press 1 or say yes. If you need help, press 2 or say no.';
+  'This is an automated emergency check-in. If you are safe, press 1 or say yes. If you need help, press 2 or say no.';
 export const REQUEST_CALL =
   'This is an automated check-in from the disaster help line. If you still need help, press 1 or say yes. If you are okay, press 2 or say no.';
 

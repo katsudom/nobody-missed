@@ -179,7 +179,7 @@ export const CHECKIN_TEXT = 'Still need help? Reply 1 yes, 2 no.';
 // We text every household in the storm zone first; silent ones get re-texted, called, then go urgent.
 
 export const STORM_TEXT =
-  'Storm alert from State Farm. Reply 1 if you are safe. Reply 2 if you need help.';
+  'This is an automated emergency check-in. Reply 1 if you are safe. Reply 2 if you need help.';
 /** The one area every storm hits. Every team phone lives here, plus the fake households. */
 export const STORM_AREA = 'Richardson';
 /** Fake households alerted per storm (real team phones in the hit cities are always alerted too). */

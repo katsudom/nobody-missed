@@ -282,7 +282,7 @@ export default function Board() {
 }
 
 // The storm alert texts as the module sends them (spacetimedb/src/rules.ts STORM_TEXT / STORM_RETEXT). Display only.
-const STORM_TEXT = 'Storm alert from State Farm. Reply 1 if you are safe. Reply 2 if you need help.';
+const STORM_TEXT = 'This is an automated emergency check-in. Reply 1 if you are safe. Reply 2 if you need help.';
 const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if you need help.';
 
 type ThreadItem =
