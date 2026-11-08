@@ -326,8 +326,3 @@ a.btn { text-decoration: none; display: inline-block; }
 .lvl-high { background: #3a2a0c; color: var(--amber); }
 .lvl-normal { background: #26262a; color: var(--grey); }
 .crow { grid-template-columns: 150px minmax(0, 1fr) 56px auto; }
-
-/* Household profile ("On file") in the check-in detail */
-.onfile-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
-.onfile-tag { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(100, 210, 255, 0.14); color: #64d2ff; }
-.onfile-said { opacity: 0.8; }

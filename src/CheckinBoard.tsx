@@ -313,8 +313,6 @@ function CheckinDetail({ c, h, req, now, mine, onClaim, onRelease, onResolve }: 
         {h && <div className="gmeta">{h.age ? `${h.age} · ` : ''}{h.address}, {h.city}</div>}
       </div>
 
-      {h && <OnFile h={h} />}
-
       {chatOpen && (
         <div className="thread" aria-label="Chat history">
           <div className="tout">{STORM_TEXT}<span className="tat">{clock(tsMs(c.createdAt))}</span></div>
@@ -374,30 +372,6 @@ function CheckinDetail({ c, h, req, now, mine, onClaim, onRelease, onResolve }: 
         {canResolve(c, mine) && <button className="gbtn plain" onClick={() => onResolve(c.id)}>Mark resolved</button>}
       </div>
     </aside>
-  );
-}
-
-/** What the household told us when they joined (spacetimedb household.profile), so nobody asks again. */
-function OnFile({ h }: { h: Household }) {
-  if (h.profileStep === 'asked') return <div className="gsec"><div className="glabel">On file</div><div className="ggroup gquote dim">Asked what to know about them; no answer yet.</div></div>;
-  if (h.profileStep === 'reading') return <div className="gsec"><div className="glabel">On file</div><div className="ggroup gquote">{h.profileText}<span className="dim"> · reading…</span></div></div>;
-  let p: { people?: number | null; medical?: string[]; children?: boolean; pets?: boolean } = {};
-  try { p = JSON.parse(h.profile || '{}') ?? {}; } catch { /* keep empty */ }
-  const tags = [
-    ...(p.people ? [p.people === 1 ? 'lives alone' : `${p.people} people`] : []),
-    ...(p.medical ?? []),
-    ...(p.children ? ['kids'] : []),
-    ...(p.pets ? ['pets'] : []),
-  ];
-  if (!tags.length && !h.profileText) return null;
-  return (
-    <div className="gsec">
-      <div className="glabel">On file</div>
-      <div className="ggroup gquote">
-        {tags.length > 0 && <div className="onfile-tags">{tags.map((t) => <span key={t} className="onfile-tag">{t}</span>)}</div>}
-        {h.profileText && <div className="onfile-said">“{h.profileText}”</div>}
-      </div>
-    </div>
   );
 }
 
