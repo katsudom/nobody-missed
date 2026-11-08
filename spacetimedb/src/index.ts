@@ -104,6 +104,15 @@ const admin = table(
   }
 );
 
+/** Switches only Dominic flips. key "calls": "on" lets check-ins place real phone calls (they cost credits). */
+const setting = table(
+  { name: 'setting', public: true },
+  {
+    key: t.string().primaryKey(),
+    value: t.string(),
+  }
+);
+
 /** Teammates: can run storms, seed and inject from Dev tools. Only admins (Dominic) can reset or wipe. */
 const teammate = table(
   { name: 'teammate', public: true },
@@ -165,7 +174,7 @@ const checkin = table(
   }
 );
 
-const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin, teammate, household, storm, checkin });
+const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin, teammate, setting, household, storm, checkin });
 export default spacetimedb;
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
@@ -302,8 +311,10 @@ export const tick = spacetimedb.reducer({ onSchedule: tickTimer }, { timer: tick
             text: CHECKIN_TEXT,
           });
         } else if (action.outbox === 'place_call') {
-          r.callsPlaced += 1;
-          enqueue(ctx, r.id, 'place_call', { platform: r.platform, to: r.victimHandle, caseId: r.id.toString() });
+          if (callsOn(ctx)) {
+            r.callsPlaced += 1;
+            enqueue(ctx, r.id, 'place_call', { platform: r.platform, to: r.victimHandle, caseId: r.id.toString() });
+          }
         }
         changed = true;
       }
@@ -480,6 +491,19 @@ export const addTeammate = spacetimedb.reducer({ identityHex: t.string() }, (ctx
 export const removeTeammate = spacetimedb.reducer({ identityHex: t.string() }, (ctx, { identityHex }) => {
   requireAdmin(ctx, 'Removing teammates');
   ctx.db.teammate.identityHex.delete(cleanHex(identityHex));
+});
+
+/** Real phone calls cost ElevenLabs credits, so they are off unless Dominic turns them on. */
+function callsOn(ctx: Ctx) {
+  return ctx.db.setting.key.find('calls')?.value === 'on';
+}
+
+/** Admin only: turn real check-in calls on or off. Ending a storm turns them off again. */
+export const setCalls = spacetimedb.reducer({ on: t.bool() }, (ctx, { on }) => {
+  requireAdmin(ctx, 'Turning calls on or off');
+  const value = on ? 'on' : 'off';
+  if (ctx.db.setting.key.find('calls')) ctx.db.setting.key.update({ key: 'calls', value });
+  else ctx.db.setting.insert({ key: 'calls', value });
 });
 
 export const makeAdmin = spacetimedb.reducer({ identityHex: t.string() }, (ctx, { identityHex }) => {
@@ -681,8 +705,8 @@ function tickCheckins(ctx: Ctx) {
           enqueue(ctx, 0n, 'send_text', { platform: h.platform, to: h.handle, spaceId: h.spaceId, senderId: h.photonSenderId, text: STORM_RETEXT }, c.id);
         }
       } else if (action.outbox === 'place_call') {
-        c.callsPlaced += 1;
-        if (h.real) enqueue(ctx, 0n, 'place_call', { platform: h.platform, to: h.handle, checkinId: c.id.toString() }, c.id);
+        if (!h.real || callsOn(ctx)) c.callsPlaced += 1; // calls off: the ladder still turns urgent, nothing rings
+        if (h.real && callsOn(ctx)) enqueue(ctx, 0n, 'place_call', { platform: h.platform, to: h.handle, checkinId: c.id.toString() }, c.id);
       }
       ctx.db.checkin.id.update(c);
     }
@@ -848,6 +872,8 @@ export const endStorm = spacetimedb.reducer((ctx) => {
   requireTeammate(ctx, 'End storm');
   const s = activeStorm(ctx);
   if (s) closeStorm(ctx, s.id);
+  const calls = ctx.db.setting.key.find('calls');
+  if (calls && calls.value === 'on') ctx.db.setting.key.update({ key: 'calls', value: 'off' });
 });
 
 /** A responder takes a household. One winner; chasing stops; its report (if any) is claimed too. */

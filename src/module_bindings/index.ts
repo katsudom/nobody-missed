@@ -55,6 +55,7 @@ import ResetTeamPhonesReducer from "./reset_team_phones_reducer";
 import ResolveCheckinReducer from "./resolve_checkin_reducer";
 import ResolveRequestReducer from "./resolve_request_reducer";
 import SeedHouseholdsReducer from "./seed_households_reducer";
+import SetCallsReducer from "./set_calls_reducer";
 import SetFactsReducer from "./set_facts_reducer";
 import SimulateReplyReducer from "./simulate_reply_reducer";
 import StartStormReducer from "./start_storm_reducer";
@@ -72,6 +73,7 @@ import HouseholdRow from "./household_table";
 import OutboxRow from "./outbox_table";
 import RequestRow from "./request_table";
 import ResponderRow from "./responder_table";
+import SettingRow from "./setting_table";
 import StormRow from "./storm_table";
 import TeammateRow from "./teammate_table";
 
@@ -183,6 +185,17 @@ const tablesSchema = __schema({
       { name: 'responder_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, ResponderRow),
+  setting: __table({
+    name: 'setting',
+    indexes: [
+      { accessor: 'key', name: 'setting_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'setting_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, SettingRow),
   storm: __table({
     name: 'storm',
     indexes: [
@@ -230,6 +243,7 @@ const reducersSchema = __reducers(
   __reducerSchema("resolve_checkin", ResolveCheckinReducer),
   __reducerSchema("resolve_request", ResolveRequestReducer),
   __reducerSchema("seed_households", SeedHouseholdsReducer),
+  __reducerSchema("set_calls", SetCallsReducer),
   __reducerSchema("set_facts", SetFactsReducer),
   __reducerSchema("simulate_reply", SimulateReplyReducer),
   __reducerSchema("start_storm", StartStormReducer),

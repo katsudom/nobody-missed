@@ -100,6 +100,12 @@ export const Responder = __t.object("Responder", {
 });
 export type Responder = __Infer<typeof Responder>;
 
+export const Setting = __t.object("Setting", {
+  key: __t.string(),
+  value: __t.string(),
+});
+export type Setting = __Infer<typeof Setting>;
+
 export const Storm = __t.object("Storm", {
   id: __t.u64(),
   cities: __t.string(),

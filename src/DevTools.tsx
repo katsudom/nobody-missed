@@ -12,6 +12,7 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const { identity } = useSpacetimeDB();
   const [admins] = useTable(tables.admin);
   const [teammates] = useTable(tables.teammate);
+  const [settings] = useTable(tables.setting);
   const [newMate, setNewMate] = useState('');
   const [storms] = useTable(tables.storm);
   const run = useRun();
@@ -68,12 +69,23 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
             <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started in Richardson: alerts sent to every team phone'))}>Start storm</button>
           )}
           <p className="meta">
+            Phone calls: <b>{settings.find((x) => x.key === 'calls')?.value === 'on' ? 'ON (uses credits)' : 'off'}</b>
+            {isAdmin ? '' : ' · only Dominic can turn calls on'}
+          </p>
+          <p className="meta">
             Team phones join by texting JOIN to the Photon number. Joined now: {households.filter((h) => h.real).length}
           </p>
           {onInject && <button className="btn" onClick={onInject}>Inject 2,000 reports</button>}
           {isAdmin && (
             <>
               <p className="meta">Dominic only:</p>
+              {settings.find((x) => x.key === 'calls')?.value === 'on' ? (
+                <button className="btn" onClick={() => run((c) => c.reducers.setCalls({ on: false })).then(ok('Calls off'))}>Turn calls off</button>
+              ) : (
+                <button className="btn danger" onClick={() => run((c) => c.reducers.setCalls({ on: true })).then(ok('Calls on until the storm ends'))}>
+                  Turn calls on (uses credits)
+                </button>
+              )}
               <input className="devinput" placeholder="Teammate's Dev id" value={newMate} onChange={(e) => setNewMate(e.target.value)} />
               <button
                 className="btn"
