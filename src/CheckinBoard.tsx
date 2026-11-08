@@ -8,7 +8,7 @@ import CheckinRowT from './module_bindings/checkin_table';
 import HouseholdRowT from './module_bindings/household_table';
 import StormRowT from './module_bindings/storm_table';
 import RequestRowT from './module_bindings/request_table';
-import { mmss, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
+import { byLevel, Level, levelOf, mmss, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
 import DevTools from './DevTools';
 import { useMode } from './mode';
 
@@ -88,10 +88,12 @@ export default function CheckinBoard() {
     for (const c of list) k[bucketOf(c)]++;
     const tab: Bucket | 'all' = picked ?? (['urgent', 'help', 'waiting'] as Bucket[]).find((b) => k[b] > 0) ?? 'all';
     const shown = tab === 'all' ? [...list] : list.filter((c) => bucketOf(c) === tab);
-    const score = (c: Checkin) => reqs.get(c.requestId)?.score ?? 0;
     const order = ['urgent', 'needs_help', 'called', 'retexted', 'texted', 'no_reply', 'claimed', 'closed', 'safe'];
     shown.sort((a, b) => {
-      if (tab === 'help') return score(b) - score(a);
+      if (tab === 'help') {
+        const ra = reqs.get(a.requestId), rb = reqs.get(b.requestId);
+        if (ra && rb) return byLevel(ra, rb);
+      }
       if (tab === 'safe' || tab === 'handled') return a.updatedAt.microsSinceUnixEpoch < b.updatedAt.microsSinceUnixEpoch ? 1 : -1;
       // urgent / waiting / all: furthest along the ladder first, then longest waiting
       return order.indexOf(a.state) - order.indexOf(b.state) ||
@@ -259,7 +261,7 @@ const CheckinRow = memo(function CheckinRow({ c, h, req, now, mine, selected, on
           {req ? rowReason(req) : h ? `${h.address}, ${h.city}${h.age ? ` · age ${h.age}` : ''}` : ''}
         </div>
       </div>
-      <span className={`score ${req ? `tier-${req.tier}` : ''}`}>{req ? req.score : ''}</span>
+      <span className="score">{req ? <Level tier={req.tier} /> : b === 'urgent' ? <Level tier="critical" /> : null}</span>
       <div className="actions">
         {canClaim(c) && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
         {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
@@ -290,7 +292,7 @@ function CheckinDetail({ c, h, req, now, mine, onClaim, onRelease, onResolve }: 
     },
   ];
 
-  const timer = nextStep(c, now).replace(/^\D+/, '') || (req ? String(req.score) : '');
+  const timer = nextStep(c, now).replace(/^\D+/, '') || (req ? `${levelOf(req.tier).label} · ${levelOf(req.tier).name}` : b === 'urgent' ? 'P1 · Go now' : '');
   const statusText: Record<Bucket, string> = {
     urgent: 'No contact: welfare check',
     help: 'Needs help',

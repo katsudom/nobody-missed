@@ -106,3 +106,23 @@ export function Highlighted({ text, quotes }: { text: string; quotes: string[] }
     </>
   );
 }
+
+// ---------- Priority levels (spacetimedb/src/rules.ts levelFor) ----------
+// A report's `tier` column holds its level. Responders see P1 / P2 / P3, never the points.
+export const LEVEL: Record<string, { label: string; name: string; rank: number }> = {
+  critical: { label: 'P1', name: 'Go now', rank: 1 },
+  high: { label: 'P2', name: 'Go soon', rank: 2 },
+  normal: { label: 'P3', name: 'Check when you can', rank: 3 },
+};
+export const levelOf = (tier: string) => LEVEL[tier] ?? LEVEL.normal;
+
+/** Level first, then whoever has waited longest. */
+export function byLevel(a: { tier: string; createdAt: { microsSinceUnixEpoch: bigint } }, b: { tier: string; createdAt: { microsSinceUnixEpoch: bigint } }) {
+  return levelOf(a.tier).rank - levelOf(b.tier).rank ||
+    (a.createdAt.microsSinceUnixEpoch < b.createdAt.microsSinceUnixEpoch ? -1 : a.createdAt.microsSinceUnixEpoch > b.createdAt.microsSinceUnixEpoch ? 1 : 0);
+}
+
+export function Level({ tier }: { tier: string }) {
+  const l = levelOf(tier);
+  return <span className={`lvl lvl-${tier in LEVEL ? tier : 'normal'}`} title={l.name}>{l.label}</span>;
+}

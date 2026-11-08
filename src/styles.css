@@ -319,3 +319,10 @@ a.btn { text-decoration: none; display: inline-block; }
 .devmode__opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .modetag { font-size: var(--fs-xs); color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; white-space: nowrap; }
 .modetag.is-real { color: var(--green); border-color: #1f5c40; }
+
+/* Priority level badge: P1 / P2 / P3 (replaces the urgency number) */
+.lvl { display: inline-block; min-width: 38px; text-align: center; font-size: var(--fs-sm); font-weight: 700; padding: 3px 9px; border-radius: 8px; font-variant-numeric: tabular-nums; }
+.lvl-critical { background: #3a1217; color: #ff8a95; }
+.lvl-high { background: #3a2a0c; color: var(--amber); }
+.lvl-normal { background: #26262a; color: var(--grey); }
+.crow { grid-template-columns: 150px minmax(0, 1fr) 56px auto; }

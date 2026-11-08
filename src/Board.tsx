@@ -7,7 +7,7 @@ import type { Infer } from 'spacetimedb';
 import RequestRow from './module_bindings/request_table';
 import HouseholdRow from './module_bindings/household_table';
 import {
-  Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
+  byLevel, Highlighted, Level, levelOf, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
 } from './lib';
 import { personFor } from './policyholders';
 
@@ -40,13 +40,8 @@ const STATE_LABEL: Record<string, string> = {
   closed: 'Safe',
 };
 
-function compare(a: Request, b: Request) {
-  return (
-    b.score - a.score ||
-    b.baseScore - a.baseScore ||
-    (a.createdAt.microsSinceUnixEpoch < b.createdAt.microsSinceUnixEpoch ? -1 : 1)
-  );
-}
+// Level first (P1, P2, P3), then whoever has waited longest. The points stay hidden.
+const compare = (a: Request, b: Request) => byLevel(a, b);
 
 type RowProps = {
   r: Request;
@@ -88,7 +83,7 @@ const Row = memo(function Row({ r, household, now, mine, claimer, fresh, selecte
         </div>
       </div>
       <span className="timer">{timer}</span>
-      <span className={`score tier-${r.tier}`}>{r.score}</span>
+      <span className="score"><Level tier={r.tier} /></span>
       <div className="actions">
         {claimed && r.state !== 'closed' && <span className="onway">{claimer} is on the way</span>}
         {!claimed && r.state !== 'closed' && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
@@ -336,7 +331,7 @@ function Detail({ r, household, now, mine, claimer, onClaim, onRelease, onResolv
           <span className="ttitle">{band.title}</span>
           <span className="tsub">{band.sub}</span>
         </div>
-        <div className="tscore"><span>{r.score}</span><em>urgency</em></div>
+        <div className="tscore"><span>{levelOf(r.tier).label}</span><em>{levelOf(r.tier).name}</em></div>
       </div>
       <div className="tbody">
         <div className="tperson">
