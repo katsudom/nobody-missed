@@ -12,6 +12,8 @@ Steps 1-8 of docs/HANDOFF-PROMPT.md. Step 6 DONE. Next: Step 7 (ElevenLabs calls
 
 - Approved + live: after a "1" reply the next check-in waits T1_AFTER_REPLY (10 demo-s / 10 real min), not the 5 s critical T1. rules.ts, published.
 
+- Board: Dorothy's triage inbox merged (#15). On top: Dev tools 'Real phones' (default) / 'Fake data too' switch (per browser), rows flash on change, real numbers masked to area code. 0452b37. Flash not yet seen on a real text.
+
 ## Planned, NOT built (Dominic: plan only, don't code yet)
 - Call only after 2 unanswered check-in texts (the first one counts). Today: 1 unanswered text -> call. Will use request.checkinsSent. Needs SPEC §1/§4 update when built.
 
@@ -19,7 +21,6 @@ Steps 1-8 of docs/HANDOFF-PROMPT.md. Step 6 DONE. Next: Step 7 (ElevenLabs calls
 - Reply 2 sends no confirmation text (SPEC has none). Fine or add one? (flow change, ask first)
 
 ## Next
-- Board "simple view" so changes are easy to see: options reported to Dominic, waiting on his pick.
 - Step 7: ElevenLabs outbound call via Photon SIP (needs a purchased Photon SMS/voice number; 15 free call minutes, few test calls). Then Step 8 (demo script SPEC sec 2).
 
 ## Running
