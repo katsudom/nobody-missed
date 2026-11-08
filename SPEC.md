@@ -129,8 +129,8 @@ new ──(facts done)──► waiting ──(unclaimed > T1)──► checkin_
 ```
 base = 10
 +40  medical dependency on power (oxygen, ventilator, dialysis, insulin/fridge)
-+30  trapped / rising water / fire / structural collapse
-+20  age >= 75  or  infant/child present  or  mobility impaired
++30  trapped / rising water / fire / structural collapse / injury
++20  age >= 75  or  infant/child present  or  mobility impaired  or  pregnant
 +15  no power / no water (without medical dependency)
 +10  multiple people (>= 3)
 -> tier: >= 60 critical, >= 30 high, else normal

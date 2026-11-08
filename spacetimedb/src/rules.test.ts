@@ -7,6 +7,7 @@ import {
   escalationFor,
   totalScore,
   decideTick,
+  T1_AFTER_REPLY,
   stateAfterCall,
   stateAfterReply,
   ESCALATION_CAP,
@@ -39,6 +40,12 @@ test('each rule adds its points once', () => {
   assert.equal(scoreFacts({ people: 3 }).baseScore, 20);
   assert.equal(scoreFacts({ people: 2 }).baseScore, 10);
   assert.equal(scoreFacts({ age: 74 }).baseScore, 10);
+});
+
+test('injury counts as danger, pregnancy as vulnerable', () => {
+  assert.deepEqual(scoreFacts({ hazards: ['injury'] }), { baseScore: 40, tier: 'high', reasons: ['danger: injury'] });
+  assert.deepEqual(scoreFacts({ medical: ['pregnant'] }), { baseScore: 30, tier: 'high', reasons: ['vulnerable: pregnant'] });
+  assert.equal(scoreFacts({ medical: ['pregnant'], hazards: ['flooding'] }).baseScore, 60);
 });
 
 test('everything at once', () => {
@@ -154,4 +161,12 @@ test('check-in replies and calls', () => {
   assert.equal(checkinAfterCall('answered', '2'), 'needs_help');
   assert.equal(checkinAfterCall('answered', ''), 'urgent');
   assert.equal(checkinAfterCall('no_answer', ''), 'urgent');
+});
+
+test('after a "1" reply, the next check-in waits T1_AFTER_REPLY, not the short critical T1', () => {
+  assert.equal(decideTick('waiting', 'critical', T1_CHECKIN.critical, null, false, true), null);
+  assert.deepEqual(decideTick('waiting', 'critical', T1_AFTER_REPLY, null, false, true),
+    { state: 'checkin_text_sent', outbox: 'send_text' });
+  // normal tier's own T1 is already longer, so it keeps it
+  assert.equal(decideTick('waiting', 'normal', T1_AFTER_REPLY, null, false, true), null);
 });

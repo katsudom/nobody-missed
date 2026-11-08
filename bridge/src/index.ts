@@ -1,11 +1,12 @@
 // Bridge (SPEC §7). Thin: moves events in and drains the outbox. Decides nothing.
-// Step 5 (this file): extract_facts -> Claude -> setFacts.
-// Later steps add: send_text / place_call (Photon, ElevenLabs) and Photon inbound.
+// extract_facts -> Claude -> setFacts.  send_text -> Photon iMessage.  Photon inbound -> submitRequest / victimReplied.
+// place_call (ElevenLabs) comes in Step 7.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DbConnection, tables } from '../../src/module_bindings/index.ts';
 import { extractFacts } from './claude.ts';
+import { photonEnabled, pollInbound, sendText, type Inbound } from './photon.ts';
 
 const HOST = process.env.SPACETIMEDB_HOST;
 const DB = process.env.SPACETIMEDB_DB_NAME;
@@ -40,6 +41,47 @@ const conn = DbConnection.builder()
   .onConnectError((_c, err) => console.error('bridge: connect error', err))
   .build();
 
+async function take(id: bigint) {
+  try { await conn.reducers.takeOutbox({ outboxId: id }); return true; } catch { return false; }
+}
+
+async function handleSendText(o: { id: bigint; requestId: bigint; payload: string }) {
+  const key = o.id.toString();
+  if (busy.has(key)) return;
+  const p = JSON.parse(o.payload) as { platform: string; spaceId: string; senderId: string; text: string };
+  if (p.platform === 'imessage' && !photonEnabled()) return; // leave queued until the Photon key is set
+  busy.add(key);
+  try {
+    if (!(await take(o.id))) return;
+    let externalId = 'sim'; // victim-sim / test rows: nothing to send, record it as done
+    if (p.platform === 'imessage') externalId = await sendText({ outboxId: o.id, spaceId: p.spaceId, senderId: p.senderId, text: p.text });
+    await conn.reducers.completeOutbox({ outboxId: o.id, ok: true, externalId });
+    console.log(`bridge: request ${o.requestId} check-in text ${p.platform === 'imessage' ? 'sent' : 'recorded (sim)'}`);
+  } catch (err) {
+    console.error(`bridge: request ${o.requestId} check-in text failed:`, err instanceof Error ? err.message : err);
+    await conn.reducers.completeOutbox({ outboxId: o.id, ok: false, externalId: '' }).catch(() => {});
+  } finally {
+    busy.delete(key);
+  }
+}
+
+async function handleInbound(m: Inbound) {
+  try { await routeInbound(m); } catch (err) {
+    console.error('bridge: could not record inbound message:', err instanceof Error ? err.message : err);
+  }
+}
+
+async function routeInbound(m: Inbound) {
+  const open = [...conn.db.request.iter()].some((r) => r.victimHandle === m.handle && r.state !== 'closed');
+  if (open) {
+    await conn.reducers.victimReplied({ victimHandle: m.handle, text: m.text });
+    console.log(`bridge: reply from ${m.handle.slice(0, 5)}… -> victimReplied`);
+  } else {
+    await conn.reducers.submitRequest({ victimHandle: m.handle, spaceId: m.spaceId, photonSenderId: m.agentUserId, platform: 'imessage', rawText: m.text });
+    console.log(`bridge: new request from ${m.handle.slice(0, 5)}… -> submitRequest`);
+  }
+}
+
 async function handleExtract(o: { id: bigint; requestId: bigint; payload: string }) {
   const key = o.id.toString();
   if (busy.has(key)) return;
@@ -70,13 +112,28 @@ async function handleExtract(o: { id: bigint; requestId: bigint; payload: string
   }
 }
 
+function handle(o: { id: bigint; requestId: bigint; kind: string; status: string; payload: string }) {
+  if (o.status !== 'queued') return;
+  if (o.kind === 'extract_facts') void handleExtract(o);
+  else if (o.kind === 'send_text') void handleSendText(o);
+}
+
 function sweep() {
-  for (const o of conn.db.outbox.iter()) {
-    if (o.status === 'queued' && o.kind === 'extract_facts') void handleExtract(o);
-  }
+  for (const o of conn.db.outbox.iter()) handle(o);
 }
 
 setInterval(sweep, 2000);
-conn.db.outbox.onInsert((_ctx, o) => {
-  if (o.status === 'queued' && o.kind === 'extract_facts') void handleExtract(o);
-});
+conn.db.outbox.onInsert((_ctx, o) => handle(o));
+
+if (photonEnabled()) {
+  let ready = false;
+  const startPhoton = () => {
+    if (ready) return;
+    ready = true;
+    pollInbound(path.join(here, '..', '.photon-cursor.json'), handleInbound);
+    console.log('bridge: Photon iMessage polling on');
+  };
+  const wait = setInterval(() => { if (conn.isActive) { clearInterval(wait); setTimeout(startPhoton, 1500); } }, 500);
+} else {
+  console.log('bridge: PHOTON_API_KEY empty: iMessage off (sim check-ins still recorded)');
+}
