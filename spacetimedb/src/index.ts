@@ -10,6 +10,8 @@ import {
   escalationFor,
   parseFacts,
   scoreFacts,
+  levelFor,
+  UNREAD_REASON,
   stateAfterCall,
   stateAfterReply,
   totalScore,
@@ -203,9 +205,16 @@ function enqueue(ctx: Ctx, requestId: bigint, kind: string, payload: object, che
   });
 }
 
-/** Write a row back with score recomputed. */
+/** The P1/P2/P3 level a report shows now (rules.ts levelFor): from its facts, whether Claude read it, its state and how long it has waited. */
+function currentLevel(r: RequestRow, nowMicros: bigint): string {
+  const base = scoreFacts(parseFacts(r.facts)).tier;
+  return levelFor(base, r.factsStatus === 'done', r.state, nowMicros - r.createdAt.microsSinceUnixEpoch);
+}
+
+/** Write a row back with its level and (hidden, tie-breaker only) score recomputed. */
 function save(ctx: Ctx, r: RequestRow) {
   r.score = totalScore(r.baseScore, r.escalation, r.state);
+  if (r.state !== 'claimed' && r.state !== 'closed') r.tier = currentLevel(r, ctx.timestamp.microsSinceUnixEpoch);
   ctx.db.request.id.update(r);
 }
 
@@ -294,6 +303,7 @@ export const tick = spacetimedb.reducer({ onSchedule: tickTimer }, { timer: tick
         r.escalation = esc;
         changed = true;
       }
+      if (currentLevel(r, t0) !== r.tier) changed = true; // waited long enough to move up a level
 
       let latestCall = null;
       if (r.state === 'call_placed') {
@@ -345,8 +355,9 @@ export const setFacts = spacetimedb.reducer(
   { requestId: t.u64(), factsJson: t.string(), ok: t.bool() },
   (ctx, { requestId, factsJson, ok }) => {
     const r = getRequest(ctx, requestId);
-    applyFacts(r, ok ? factsJson : '{}'); // failed extraction still gets base score — nobody is dropped
+    applyFacts(r, ok ? factsJson : '{}'); // failed extraction is ranked P2, never last: nobody is dropped
     r.factsStatus = ok ? 'done' : 'failed';
+    if (!ok) r.reasons = JSON.stringify([UNREAD_REASON]);
     if (r.state === 'new') setState(ctx, r, 'waiting');
     save(ctx, r);
   }

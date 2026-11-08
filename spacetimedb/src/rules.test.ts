@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import {
   scoreFacts,
   tierFor,
+  levelFor,
+  AGE_P3_TO_P2,
+  AGE_P2_TO_P1,
   escalationFor,
   totalScore,
   decideTick,
@@ -56,11 +59,31 @@ test('everything at once', () => {
   assert.equal(r.baseScore, 10 + 40 + 30 + 20 + 10);
 });
 
-test('tier thresholds', () => {
-  assert.equal(tierFor(60), 'critical');
-  assert.equal(tierFor(59), 'high');
-  assert.equal(tierFor(30), 'high');
-  assert.equal(tierFor(29), 'normal');
+test('levels from facts: P1 / P2 / P3', () => {
+  // P1: power-dependent medical alone (was amber 50 under the old points)
+  assert.equal(scoreFacts({ medical: ['oxygen'], hazards: ['no_power'] }).tier, 'critical');
+  // P1: danger AND vulnerable
+  assert.equal(scoreFacts({ hazards: ['flooding'], age: 80 }).tier, 'critical');
+  // P2: danger alone, or vulnerable alone
+  assert.equal(scoreFacts({ hazards: ['trapped'] }).tier, 'high');
+  assert.equal(scoreFacts({ children: true }).tier, 'high');
+  // P3: utilities only, or nothing
+  assert.equal(scoreFacts({ hazards: ['no_power'], people: 4 }).tier, 'normal');
+  assert.equal(tierFor({ powerMedical: false, danger: false, vulnerable: false }), 'normal');
+});
+
+test('level: unread is at least P2, no contact is P1', () => {
+  assert.equal(levelFor('normal', false, 'waiting', 0n), 'high');
+  assert.equal(levelFor('critical', false, 'waiting', 0n), 'critical');
+  assert.equal(levelFor('normal', true, 'flagged', 0n), 'critical');
+});
+
+test('level: waiting moves a report up', () => {
+  assert.equal(levelFor('normal', true, 'waiting', AGE_P3_TO_P2 - 1n), 'normal');
+  assert.equal(levelFor('normal', true, 'waiting', AGE_P3_TO_P2), 'high');
+  assert.equal(levelFor('normal', true, 'waiting', AGE_P3_TO_P2 + AGE_P2_TO_P1 - 1n), 'high');
+  assert.equal(levelFor('normal', true, 'waiting', AGE_P3_TO_P2 + AGE_P2_TO_P1), 'critical');
+  assert.equal(levelFor('high', true, 'waiting', AGE_P2_TO_P1), 'critical');
 });
 
 test('escalation +1 per step, capped', () => {
