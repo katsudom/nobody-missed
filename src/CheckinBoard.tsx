@@ -37,6 +37,9 @@ const BUCKETS: { key: Bucket; label: string; color: string }[] = [
   { key: 'safe', label: 'Safe', color: 'var(--green)' },
 ];
 
+// Tabs whose counts light up, because someone still has to act on them.
+const NEEDS_ACTION: Bucket[] = ['urgent', 'help', 'waiting'];
+
 function bucketOf(c: Checkin): Bucket {
   switch (c.state) {
     case 'urgent': return 'urgent';
@@ -142,15 +145,19 @@ export default function CheckinBoard() {
           <div className="qhead">
             <h2>Households in the impact area</h2>
             <div className="qbar">
-            <div className="tabs" role="tablist" aria-label="Filter households">
+            <div className="tabs ptabs" role="tablist" aria-label="Filter households">
               <button role="tab" aria-selected={tab === 'all'} className={`tab ${tab === 'all' ? 'on' : ''}`} onClick={() => setTab('all')}>
-                All <span>{total.toLocaleString()}</span>
+                All <span className="ptab-count">{total.toLocaleString()}</span>
               </button>
-              {BUCKETS.map((b) => (
-                <button key={b.key} role="tab" aria-selected={tab === b.key} className={`tab ${tab === b.key ? 'on' : ''}`} onClick={() => setTab(b.key)}>
-                  <b className="dot" style={{ background: b.color }} />{b.label} <span>{counts[b.key].toLocaleString()}</span>
-                </button>
-              ))}
+              {BUCKETS.map((b) => {
+                const empty = counts[b.key] === 0;
+                const hot = !empty && NEEDS_ACTION.includes(b.key);
+                return (
+                  <button key={b.key} role="tab" aria-selected={tab === b.key} className={`tab ${tab === b.key ? 'on' : ''} ${empty ? 'z' : ''}`} style={{ '--tc': b.color } as React.CSSProperties} onClick={() => setTab(b.key)}>
+                    <b className="dot" style={{ background: empty ? 'var(--line)' : b.color }} />{b.label} <span className={`ptab-count ${hot ? 'hot' : ''}`}>{counts[b.key].toLocaleString()}</span>
+                  </button>
+                );
+              })}
             </div>
             <span className="qstat">
               <b>{pct}%</b> checked in safe
