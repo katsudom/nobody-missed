@@ -125,3 +125,18 @@ export const TickTimer = __t.object("TickTimer", {
 });
 export type TickTimer = __Infer<typeof TickTimer>;
 
+export const UndoAction = __t.object("UndoAction", {
+  id: __t.u64(),
+  caseKind: __t.string(),
+  caseId: __t.u64(),
+  action: __t.string(),
+  actor: __t.identity(),
+  doneAt: __t.timestamp(),
+  prevState: __t.string(),
+  prevUpdatedAt: __t.timestamp(),
+  linkedPrevState: __t.string(),
+  linkedPrevUpdatedAt: __t.timestamp(),
+  cancelledOutbox: __t.array(__t.u64()),
+});
+export type UndoAction = __Infer<typeof UndoAction>;
+

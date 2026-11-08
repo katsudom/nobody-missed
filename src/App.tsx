@@ -3,6 +3,7 @@ import { useSpacetimeDB } from 'spacetimedb/react';
 import Board from './Board';
 import CheckinBoard from './CheckinBoard';
 import VictimSim from './VictimSim';
+import UndoTray from './UndoTray';
 import { ToastProvider, useRun } from './lib';
 import './styles.css';
 
@@ -69,6 +70,7 @@ function Shell() {
     <>
       {!isActive && <div className="conn">Connecting…</div>}
       {route === 'reports' ? <Board /> : <CheckinBoard />}
+      <UndoTray />
       {!name && isActive && <NamePrompt onDone={setName} />}
     </>
   );

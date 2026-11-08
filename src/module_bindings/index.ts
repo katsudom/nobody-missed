@@ -62,6 +62,7 @@ import SimulateReplyReducer from "./simulate_reply_reducer";
 import StartStormReducer from "./start_storm_reducer";
 import SubmitRequestReducer from "./submit_request_reducer";
 import TakeOutboxReducer from "./take_outbox_reducer";
+import UndoCaseReducer from "./undo_case_reducer";
 import VictimRepliedReducer from "./victim_replied_reducer";
 
 // Import all procedure arg schemas
@@ -77,6 +78,7 @@ import ResponderRow from "./responder_table";
 import SettingRow from "./setting_table";
 import StormRow from "./storm_table";
 import TeammateRow from "./teammate_table";
+import UndoActionRow from "./undo_action_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -219,6 +221,20 @@ const tablesSchema = __schema({
       { name: 'teammate_identity_hex_key', constraint: 'unique', columns: ['identityHex'] },
     ],
   }, TeammateRow),
+  undoAction: __table({
+    name: 'undo_action',
+    indexes: [
+      { accessor: 'caseId', name: 'undo_action_case_id_idx_btree', algorithm: 'btree', columns: [
+        'caseId',
+      ] },
+      { accessor: 'id', name: 'undo_action_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'undo_action_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, UndoActionRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
@@ -251,6 +267,7 @@ const reducersSchema = __reducers(
   __reducerSchema("start_storm", StartStormReducer),
   __reducerSchema("submit_request", SubmitRequestReducer),
   __reducerSchema("take_outbox", TakeOutboxReducer),
+  __reducerSchema("undo_case", UndoCaseReducer),
   __reducerSchema("victim_replied", VictimRepliedReducer),
 );
 

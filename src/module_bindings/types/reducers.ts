@@ -34,6 +34,7 @@ import SimulateReplyReducer from "../simulate_reply_reducer";
 import StartStormReducer from "../start_storm_reducer";
 import SubmitRequestReducer from "../submit_request_reducer";
 import TakeOutboxReducer from "../take_outbox_reducer";
+import UndoCaseReducer from "../undo_case_reducer";
 import VictimRepliedReducer from "../victim_replied_reducer";
 
 export type AddTeammateParams = __Infer<typeof AddTeammateReducer>;
@@ -64,5 +65,6 @@ export type SimulateReplyParams = __Infer<typeof SimulateReplyReducer>;
 export type StartStormParams = __Infer<typeof StartStormReducer>;
 export type SubmitRequestParams = __Infer<typeof SubmitRequestReducer>;
 export type TakeOutboxParams = __Infer<typeof TakeOutboxReducer>;
+export type UndoCaseParams = __Infer<typeof UndoCaseReducer>;
 export type VictimRepliedParams = __Infer<typeof VictimRepliedReducer>;
 
