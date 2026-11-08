@@ -94,7 +94,7 @@ No map (team decision). Layout:
 - **Queue tabs:** Urgent (no contact) · Needs help · Waiting (shows "re-text in 0:08", "calling…") · Safe.
 - **Row:** name, address, attempts ("2 texts, 1 call"), time since storm, Claim.
 - **Detail panel:** timeline of every text/call/reply for that household.
-- **Admin dev panel:** Seed households, Start storm, End storm (plus existing Reset).
+- **Admin dev panel:** Start storm (creates up to 20 fake households itself), End storm, plus Reset.
 - **`/victim-sim`:** pick a household → buttons "Reply 1", "Reply 2", "Ignore".
 
 ## Demo script (2 min, replaces SPEC §2)

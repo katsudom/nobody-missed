@@ -47,7 +47,7 @@ npm run sandbox:publish    # once, and again after you pull backend changes
 npm run dev:sandbox
 ```
 
-Open the address it prints. Click **Dev** (bottom right). You don't need to be added as a teammate: Seed, Start storm and Reset all work. The panel shows **Local sandbox** so you know you're not on the shared database.
+Open the address it prints. Click **Dev** (bottom right). You don't need to be added as a teammate: Start storm, End storm and Reset all work. Start storm creates 20 fake households by itself. The panel shows **Local sandbox** so you know you're not on the shared database.
 
 ## What you can change
 

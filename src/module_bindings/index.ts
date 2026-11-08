@@ -49,13 +49,11 @@ import RegisterResponderReducer from "./register_responder_reducer";
 import ReleaseCheckinReducer from "./release_checkin_reducer";
 import ReleaseRequestReducer from "./release_request_reducer";
 import RemoveAdminReducer from "./remove_admin_reducer";
-import RemoveFakeHouseholdsReducer from "./remove_fake_households_reducer";
 import RemoveTeammateReducer from "./remove_teammate_reducer";
 import ResetDemoReducer from "./reset_demo_reducer";
 import ResetTeamPhonesReducer from "./reset_team_phones_reducer";
 import ResolveCheckinReducer from "./resolve_checkin_reducer";
 import ResolveRequestReducer from "./resolve_request_reducer";
-import SeedHouseholdsReducer from "./seed_households_reducer";
 import SetCallsReducer from "./set_calls_reducer";
 import SetFactsReducer from "./set_facts_reducer";
 import SimulateReplyReducer from "./simulate_reply_reducer";
@@ -238,13 +236,11 @@ const reducersSchema = __reducers(
   __reducerSchema("release_checkin", ReleaseCheckinReducer),
   __reducerSchema("release_request", ReleaseRequestReducer),
   __reducerSchema("remove_admin", RemoveAdminReducer),
-  __reducerSchema("remove_fake_households", RemoveFakeHouseholdsReducer),
   __reducerSchema("remove_teammate", RemoveTeammateReducer),
   __reducerSchema("reset_demo", ResetDemoReducer),
   __reducerSchema("reset_team_phones", ResetTeamPhonesReducer),
   __reducerSchema("resolve_checkin", ResolveCheckinReducer),
   __reducerSchema("resolve_request", ResolveRequestReducer),
-  __reducerSchema("seed_households", SeedHouseholdsReducer),
   __reducerSchema("set_calls", SetCallsReducer),
   __reducerSchema("set_facts", SetFactsReducer),
   __reducerSchema("simulate_reply", SimulateReplyReducer),
