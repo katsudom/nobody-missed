@@ -31,7 +31,7 @@ const BUCKETS: { key: Bucket; label: string; color: string }[] = [
   { key: 'waiting', label: 'No Reply', color: 'var(--grey)' },
   { key: 'urgent', label: 'Urgent', color: 'var(--red)' },
   { key: 'help', label: 'Report', color: 'var(--amber)' },
-  { key: 'handled', label: 'Claimed', color: 'var(--blue)' },
+  { key: 'handled', label: 'Taken', color: 'var(--blue)' },
   { key: 'safe', label: 'Safe', color: 'var(--green)' },
 ];
 
@@ -53,7 +53,7 @@ const STATE_LABEL: Record<string, string> = {
   safe: 'Safe',
   needs_help: 'Report',
   urgent: 'Urgent',
-  claimed: 'Claimed',
+  claimed: 'Taken',
   closed: 'Resolved',
   no_reply: 'No reply',
 };
@@ -90,6 +90,9 @@ export default function CheckinBoard() {
     const shown = tab === 'all' ? [...list] : list.filter((c) => bucketOf(c) === tab);
     const order = ['urgent', 'needs_help', 'called', 'retexted', 'texted', 'no_reply', 'claimed', 'closed', 'safe'];
     shown.sort((a, b) => {
+      // Team phones stay on top so the audience can follow the real one among the fakes.
+      const realA = hh.get(a.householdId)?.real ? 0 : 1, realB = hh.get(b.householdId)?.real ? 0 : 1;
+      if (realA !== realB) return realA - realB;
       if (tab === 'help') {
         const ra = reqs.get(a.requestId), rb = reqs.get(b.requestId);
         if (ra && rb) return byLevel(ra, rb);
@@ -263,7 +266,7 @@ const CheckinRow = memo(function CheckinRow({ c, h, req, now, mine, selected, on
       </div>
       <span className="score">{req ? <Level tier={req.tier} /> : b === 'urgent' ? <Level tier="critical" /> : null}</span>
       <div className="actions">
-        {canClaim(c) && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
+        {canClaim(c) && <button className="btn outline" onClick={stop(onClaim)}>Take case</button>}
         {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
         {canResolve(c, mine) && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
       </div>
@@ -298,7 +301,7 @@ function CheckinDetail({ c, h, req, now, mine, onClaim, onRelease, onResolve }: 
     help: 'Needs help',
     waiting: c.state === 'no_reply' ? 'No reply (storm ended)' : 'Waiting for a reply',
     safe: 'Checked in safe',
-    handled: c.state === 'closed' ? 'Resolved' : 'Claimed',
+    handled: c.state === 'closed' ? 'Resolved' : 'Taken',
   };
 
   return (
@@ -367,7 +370,7 @@ function CheckinDetail({ c, h, req, now, mine, onClaim, onRelease, onResolve }: 
       )}
 
       <div className="gactions">
-        {canClaim(c) && <button className={`gbtn gb-${b}`} onClick={() => onClaim(c.id)}>{b === 'urgent' ? 'Claim and send someone' : 'Claim'}</button>}
+        {canClaim(c) && <button className={`gbtn gb-${b}`} onClick={() => onClaim(c.id)}>{b === 'urgent' ? 'Take case · send someone' : 'Take case'}</button>}
         {mine && <button className="gbtn plain" onClick={() => onRelease(c.id)}>Release</button>}
         {canResolve(c, mine) && <button className="gbtn plain" onClick={() => onResolve(c.id)}>Mark resolved</button>}
       </div>

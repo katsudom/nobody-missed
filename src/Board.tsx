@@ -19,7 +19,7 @@ type Cat = 'help' | 'silent' | 'claimed' | 'safe';
 const CATS: { key: Cat; label: string; color: string }[] = [
   { key: 'help', label: 'Needs help', color: 'var(--red)' },
   { key: 'silent', label: 'Silent', color: 'var(--grey)' },
-  { key: 'claimed', label: 'Claimed', color: 'var(--blue)' },
+  { key: 'claimed', label: 'Taken', color: 'var(--blue)' },
   { key: 'safe', label: 'Safe', color: 'var(--green)' },
 ];
 
@@ -36,7 +36,7 @@ const STATE_LABEL: Record<string, string> = {
   checkin_text_sent: 'Text sent',
   call_placed: 'Call placed',
   flagged: 'Needs welfare check',
-  claimed: 'Claimed',
+  claimed: 'Taken',
   closed: 'Safe',
 };
 
@@ -86,7 +86,7 @@ const Row = memo(function Row({ r, household, now, mine, claimer, fresh, selecte
       <span className="score"><Level tier={r.tier} /></span>
       <div className="actions">
         {claimed && r.state !== 'closed' && <span className="onway">{claimer} is on the way</span>}
-        {!claimed && r.state !== 'closed' && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
+        {!claimed && r.state !== 'closed' && <button className="btn outline" onClick={stop(onClaim)}>Take case</button>}
         {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
         {r.state !== 'closed' && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
       </div>
@@ -321,7 +321,7 @@ function Detail({ r, household, now, mine, claimer, onClaim, onRelease, onResolv
   const band =
     r.state === 'flagged' ? { tone: 'red', title: 'No contact · go now', sub: `Silent for ${mmss(now - tsMs(r.updatedAt))}` }
     : r.state === 'closed' ? { tone: 'grey', title: 'Resolved', sub: `Closed ${clock(tsMs(r.updatedAt))}` }
-    : claimed ? { tone: 'blue', title: `${claimer || 'A responder'} is on it`, sub: `Claimed ${clock(tsMs(r.updatedAt))}` }
+    : claimed ? { tone: 'blue', title: `${claimer || 'A responder'} is on it`, sub: `Taken ${clock(tsMs(r.updatedAt))}` }
     : { tone: 'amber', title: 'Needs help', sub: `Reported ${clock(tsMs(r.createdAt))} · unclaimed ${mmss(now - tsMs(r.createdAt))}` };
 
   return (
@@ -358,7 +358,7 @@ function Detail({ r, household, now, mine, claimer, onClaim, onRelease, onResolv
         )}
 
         <div className="tactions">
-          {!claimed && r.state !== 'closed' && <button className="tbtn main" onClick={() => onClaim(r.id)}>{r.state === 'flagged' ? 'Claim · send someone' : 'Claim'}</button>}
+          {!claimed && r.state !== 'closed' && <button className="tbtn main" onClick={() => onClaim(r.id)}>{r.state === 'flagged' ? 'Take case · send someone' : 'Take case'}</button>}
           {mine && <button className="tbtn" onClick={() => onRelease(r.id)}>Release</button>}
           {r.state !== 'closed' && <button className="tbtn" onClick={() => onResolve(r.id)}>Resolve</button>}
         </div>

@@ -169,7 +169,7 @@ const checkin = table(
     reply: t.string(), // what they said, if anything
     claimedBy: t.option(t.identity()),
     requestId: t.u64(), // report row once they need help (0 = none)
-    simFate: t.string(), // fake households only: "safe" | "help" | "silent"; "" for real
+    simFate: t.string(), // fake households only: "safe" | "help" | "late" (answers after the re-text or call); "" for real
     simReplyAt: t.timestamp(), // fake households only: when they "reply"
     createdAt: t.timestamp(),
     updatedAt: t.timestamp(), // when it entered its current state (drives the ladder)
@@ -367,7 +367,7 @@ export const claimRequest = spacetimedb.reducer({ requestId: t.u64() }, (ctx, { 
   const r = getRequest(ctx, requestId);
   if (r.claimedBy) {
     const who = ctx.db.responder.identity.find(r.claimedBy)?.name ?? 'another responder';
-    throw new SenderError(`already claimed by ${who}`);
+    throw new SenderError(`already taken by ${who}`);
   }
   if (r.state === 'closed') throw new SenderError('request is closed');
   r.claimedBy = ctx.sender;
@@ -718,9 +718,10 @@ function tickCheckins(ctx: Ctx) {
       const h = ctx.db.household.id.find(c.householdId);
       if (!h) continue;
 
-      // Fake households "reply" at their rolled time; silent ones walk the whole ladder.
-      if (!h.real && c.simFate !== 'silent' && t0 >= c.simReplyAt.microsSinceUnixEpoch) {
-        applyCheckinReply(ctx, c, c.simFate === 'safe' ? '1' : '2');
+      // Fake households "reply" at their rolled time. "late" ones answer safe after the re-text or the call,
+      // so only real team phones go all the way to urgent on stage.
+      if (!h.real && t0 >= c.simReplyAt.microsSinceUnixEpoch) {
+        applyCheckinReply(ctx, c, c.simFate === 'help' ? '2' : '1');
         continue;
       }
 
@@ -864,8 +865,9 @@ export const startStorm = spacetimedb.reducer((ctx) => {
     let replyIn = 0n;
     if (!h.real) {
       const roll = ctx.random();
-      simFate = roll < 0.6 ? 'safe' : roll < 0.7 ? 'help' : 'silent';
-      replyIn = BigInt(ctx.random.integerInRange(2, 14)) * DEMO_SECOND;
+      simFate = roll < 0.6 ? 'safe' : roll < 0.7 ? 'help' : 'late';
+      // late: after the re-text (25 s) and before urgent (65 s), so they visibly come back.
+      replyIn = BigInt(simFate === 'late' ? ctx.random.integerInRange(30, 58) : ctx.random.integerInRange(2, 14)) * DEMO_SECOND;
     }
     const c = ctx.db.checkin.insert({
       id: 0n,
@@ -902,7 +904,7 @@ export const claimCheckin = spacetimedb.reducer({ checkinId: t.u64() }, (ctx, { 
   const c = getCheckin(ctx, checkinId);
   if (c.claimedBy) {
     const who = ctx.db.responder.identity.find(c.claimedBy)?.name ?? 'another responder';
-    throw new SenderError(`already claimed by ${who}`);
+    throw new SenderError(`already taken by ${who}`);
   }
   if (c.state === 'closed' || c.state === 'safe') throw new SenderError(`check-in is ${c.state}`);
   c.claimedBy = ctx.sender;
