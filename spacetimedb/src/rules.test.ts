@@ -41,6 +41,12 @@ test('each rule adds its points once', () => {
   assert.equal(scoreFacts({ age: 74 }).baseScore, 10);
 });
 
+test('injury counts as danger, pregnancy as vulnerable', () => {
+  assert.deepEqual(scoreFacts({ hazards: ['injury'] }), { baseScore: 40, tier: 'high', reasons: ['danger: injury'] });
+  assert.deepEqual(scoreFacts({ medical: ['pregnant'] }), { baseScore: 30, tier: 'high', reasons: ['vulnerable: pregnant'] });
+  assert.equal(scoreFacts({ medical: ['pregnant'], hazards: ['flooding'] }).baseScore, 60);
+});
+
 test('everything at once', () => {
   const r = scoreFacts({
     age: 80, people: 4, children: true,

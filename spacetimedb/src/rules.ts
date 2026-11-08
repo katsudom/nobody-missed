@@ -52,7 +52,7 @@ export const OPEN_UNCLAIMED: State[] = ['new', 'waiting', 'checkin_text_sent', '
 
 // ---------- Scoring ----------
 const POWER_MEDICAL = ['oxygen', 'ventilator', 'dialysis', 'insulin'];
-const DANGER = ['trapped', 'flooding', 'rising_water', 'fire', 'collapse', 'structural_collapse'];
+const DANGER = ['trapped', 'flooding', 'rising_water', 'fire', 'collapse', 'structural_collapse', 'injury'];
 const UTILITIES = ['no_power', 'no_water'];
 
 const lower = (xs: string[] | undefined) => (xs ?? []).map((x) => String(x).toLowerCase());
@@ -88,6 +88,7 @@ export function scoreFacts(f: Facts): { baseScore: number; tier: Tier; reasons: 
   if (typeof f.age === 'number' && f.age >= 75) vulnerable.push(`age ${f.age}`);
   if (f.children) vulnerable.push('child');
   if (medical.includes('mobility')) vulnerable.push('mobility');
+  if (medical.includes('pregnant')) vulnerable.push('pregnant');
   if (vulnerable.length) {
     base += 20;
     reasons.push(`vulnerable: ${vulnerable.join('+')}`);
