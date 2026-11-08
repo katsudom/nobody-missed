@@ -1,11 +1,12 @@
 // Bridge (SPEC §7). Thin: moves events in and drains the outbox. Decides nothing.
 // extract_facts -> Claude -> setFacts.  send_text -> Photon iMessage.  Photon inbound -> submitRequest / victimReplied.
-// place_call (ElevenLabs) comes in Step 7.
+// place_call -> ElevenLabs over the Photon SIP number -> checkinCallResult (storm) / callResult (request).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DbConnection, tables } from '../../src/module_bindings/index.ts';
 import { extractFacts } from './claude.ts';
+import { callsEnabled, placeCall, REQUEST_CALL, STORM_CALL, waitForResult } from './calls.ts';
 import { photonEnabled, pollInbound, sendText, type Inbound } from './photon.ts';
 
 const HOST = process.env.SPACETIMEDB_HOST;
@@ -112,10 +113,44 @@ async function handleExtract(o: { id: bigint; requestId: bigint; payload: string
   }
 }
 
-function handle(o: { id: bigint; requestId: bigint; kind: string; status: string; payload: string }) {
+const CALL_MAX_AGE_MS = 60_000; // older queued calls are leftovers from earlier runs: never ring them
+
+async function handleCall(o: { id: bigint; requestId: bigint; checkinId: bigint; payload: string; createdAt: { microsSinceUnixEpoch: bigint } }) {
+  const key = o.id.toString();
+  if (busy.has(key) || !callsEnabled()) return; // no ElevenLabs keys: leave queued, the module goes urgent on its own
+  if (Date.now() - Number(o.createdAt.microsSinceUnixEpoch / 1000n) > CALL_MAX_AGE_MS) return;
+  const p = JSON.parse(o.payload) as { platform: string; to: string; checkinId?: string; caseId?: string };
+  const storm = o.checkinId > 0n;
+  const label = storm ? `check-in ${o.checkinId}` : `request ${o.requestId}`;
+  busy.add(key);
+  try {
+    if (!(await take(o.id))) return;
+    let conversationId: string;
+    try {
+      conversationId = await placeCall(p.to, storm ? STORM_CALL : REQUEST_CALL, storm ? `checkin-${o.checkinId}` : `request-${o.requestId}`);
+    } catch (err) {
+      console.error(`bridge: ${label} call failed to start:`, err instanceof Error ? err.message : err);
+      await conn.reducers.completeOutbox({ outboxId: o.id, ok: false, externalId: '' }).catch(() => {});
+      return;
+    }
+    await conn.reducers.completeOutbox({ outboxId: o.id, ok: true, externalId: conversationId });
+    console.log(`bridge: ${label} calling (${conversationId})`);
+    const r = await waitForResult(conversationId);
+    if (storm) await conn.reducers.checkinCallResult({ checkinId: o.checkinId, result: r.result, dtmf: r.dtmf });
+    else await conn.reducers.callResult({ requestId: o.requestId, result: r.result, dtmf: r.dtmf });
+    console.log(`bridge: ${label} call ${r.result}${r.dtmf ? ` pressed ${r.dtmf}` : ''} (${r.seconds}s${r.why ? `, ${r.why}` : ''})`);
+  } catch (err) {
+    console.error(`bridge: ${label} call error:`, err instanceof Error ? err.message : err);
+  } finally {
+    busy.delete(key);
+  }
+}
+
+function handle(o: { id: bigint; requestId: bigint; checkinId: bigint; kind: string; status: string; payload: string; createdAt: { microsSinceUnixEpoch: bigint } }) {
   if (o.status !== 'queued') return;
   if (o.kind === 'extract_facts') void handleExtract(o);
   else if (o.kind === 'send_text') void handleSendText(o);
+  else if (o.kind === 'place_call') void handleCall(o);
 }
 
 function sweep() {
@@ -137,3 +172,4 @@ if (photonEnabled()) {
 } else {
   console.log('bridge: PHOTON_API_KEY empty: iMessage off (sim check-ins still recorded)');
 }
+console.log(callsEnabled() ? 'bridge: ElevenLabs calls on' : 'bridge: ElevenLabs keys empty: calls off (silent check-ins go urgent)');
