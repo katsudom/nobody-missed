@@ -201,7 +201,9 @@ test('check-in replies and calls', () => {
   assert.equal(checkinAfterReply('2'), 'needs_help');
   assert.equal(checkinAfterReply('water is rising'), 'needs_help');
   assert.equal(checkinAfterCall('answered', '1'), 'safe');
-  assert.equal(checkinAfterCall('answered', '2'), 'needs_help');
+  assert.equal(checkinAfterCall('answered', '2'), 'urgent');
+  assert.equal(checkinAfterCall('answered', '2', 'A tree fell on the roof'), 'needs_help');
+  assert.equal(checkinAfterCall('answered', '2', '  '), 'urgent');
   assert.equal(checkinAfterCall('answered', ''), 'urgent');
   assert.equal(checkinAfterCall('no_answer', ''), 'urgent');
 });

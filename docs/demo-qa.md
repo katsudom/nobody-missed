@@ -130,6 +130,9 @@ Do the encore in `demo-script.md`: "Give me a sentence." She types what the judg
 **Do you ever show someone pressing 1 or 2?**
 The simulated households do it on the board during the demo. The encore shows it on the real phone.
 
+**What happens if someone answers the call and needs help?**
+They choose: press 1 to describe what happened, which files a ranked report with their own words, or press 2 to have someone sent, which goes straight to Urgent. If they hang up or don't answer, they stay Urgent.
+
 **Don't say** the fake rows are real people or live data.
 
 ### Channels

@@ -69,3 +69,17 @@ Shows Claude working live on the real phone. One phone can't go silent and reply
 - A bare **"2"** has no details to read, so it lands at **P3**. Have her type the situation.
 - To show safe instead: she replies **1**, and her row flips to **Safe** right away.
 - Afterward: **Reset demo** before the next judge.
+
+---
+
+## Voice encore (about 2 min, if a judge has time)
+
+Shows the call itself: she answers and files a report by voice. The call starts about 45 s after **Start storm**, and the board only updates when she hangs up.
+
+1. Dev → **Reset** → **Reset demo**. **Team** → **Phone calls** on. **Demo** → **Start storm**.
+2. She ignores both texts. When the phone rings, she answers on speaker and presses **2**.
+3. The voice offers the menu:
+   - **Press 1, file a report.** It asks what happened. She says one sentence, such as *"Mom is 82, on oxygen, power's out"*. It says the report is filed. Her row becomes a **Report** at **P1** with her words.
+   - **Press 2, send someone.** It says someone is on the way. Her row turns **red: Urgent, Asked for help**.
+
+Hanging up or not answering at any step leaves her **Urgent**, so nobody gets dropped.

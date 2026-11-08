@@ -1080,16 +1080,24 @@ export const simulateReply = spacetimedb.reducer({ checkinId: t.u64(), text: t.s
   applyCheckinReply(ctx, c, text);
 });
 
-/** Bridge: result of a check-in call (answered + 1 safe, 2 help; anything else urgent). */
+/** Bridge: result of a check-in call (1 safe; 2 with spoken report opens a report; anything else urgent). */
 export const checkinCallResult = spacetimedb.reducer(
-  { checkinId: t.u64(), result: t.string(), dtmf: t.string() },
-  (ctx, { checkinId, result, dtmf }) => {
+  { checkinId: t.u64(), result: t.string(), dtmf: t.string(), report: t.string() },
+  (ctx, { checkinId, result, dtmf, report }) => {
     const call = latestCheckinCall(ctx, checkinId);
     if (call) ctx.db.call.id.update({ ...call, result, dtmf });
     const c = getCheckin(ctx, checkinId);
-    if (c.state !== 'called') return; // claimed/closed meanwhile: record only
-    const next = checkinAfterCall(result, dtmf);
+    const spoken = report.trim();
+    // A long call can outlast the timeout that turns it urgent, but the caller was told the report was filed.
+    if (c.state !== 'called' && !(spoken && c.state === 'urgent')) return; // claimed/closed meanwhile: record only
+    const next = checkinAfterCall(result, dtmf, spoken);
     setCheckin(ctx, c, next);
+    if (next === 'needs_help') {
+      const h = ctx.db.household.id.find(c.householdId);
+      if (!h) throw new SenderError(`household ${c.householdId} not found`);
+      c.reply = spoken;
+      openReport(ctx, c, h, spoken);
+    }
     ctx.db.checkin.id.update(c);
   }
 );

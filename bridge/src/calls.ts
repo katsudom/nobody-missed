@@ -37,7 +37,7 @@ export async function placeCall(to: string, firstMessage: string, ref: string): 
 
 type Conversation = {
   status: 'initiated' | 'in-progress' | 'processing' | 'done' | 'failed';
-  transcript?: { role: 'user' | 'agent'; message: string | null }[];
+  transcript?: Turn[];
   user_message_count?: number | null;
   metadata?: { call_duration_secs?: number; termination_reason?: string; phone_call?: { call_result?: string | null } | null };
 };
@@ -66,7 +66,36 @@ export function digitFrom(userTurns: string[]): string {
   return '';
 }
 
-export type CallOutcome = { result: string; dtmf: string; seconds: number; why: string };
+type Turn = { role: 'user' | 'agent'; message: string | null };
+
+// The agent's own lines mark which step of the call each reply belongs to. Keep in step with the agent prompt on ElevenLabs.
+const MENU_LINE = /file a report/i;
+const REPORT_ASK_LINE = /briefly tell us what happened/i;
+const REPORT_DONE_LINE = /filed your report/i;
+
+const agentSaid = (line: RegExp) => (t: Turn) => t.role === 'agent' && line.test(t.message ?? '');
+
+/**
+ * What a check-in call came to: "1" safe, "2" help, plus the words of their report if they gave one.
+ * Hearing the menu means the agent took them as needing help, so that call can never come back safe.
+ */
+export function readCheckinCall(turns: Turn[]): { dtmf: string; report: string } {
+  if (!turns.some(agentSaid(MENU_LINE))) {
+    return { dtmf: digitFrom(turns.filter((t) => t.role === 'user').map((t) => t.message ?? '')), report: '' };
+  }
+  const ask = turns.findIndex(agentSaid(REPORT_ASK_LINE));
+  if (ask < 0) return { dtmf: '2', report: '' };
+  const after = turns.slice(ask + 1);
+  const done = after.findIndex(agentSaid(REPORT_DONE_LINE));
+  const report = (done < 0 ? after : after.slice(0, done))
+    .filter((t) => t.role === 'user')
+    .map((t) => (t.message ?? '').trim())
+    .filter((said) => /[a-z]{2}/i.test(said)) // drops silence ("...") and stray key presses
+    .join(' ');
+  return { dtmf: '2', report };
+}
+
+export type CallOutcome = { result: string; dtmf: string; report: string; seconds: number; why: string };
 
 /** Poll every 3 s until the call is over (max ~4 min). Voicemail counts as no answer. */
 export async function waitForResult(conversationId: string): Promise<CallOutcome> {
@@ -79,15 +108,17 @@ export async function waitForResult(conversationId: string): Promise<CallOutcome
     c = (await res.json()) as Conversation;
     if (c.status === 'done' || c.status === 'failed') break;
   }
-  if (!c || (c.status !== 'done' && c.status !== 'failed')) return { result: 'failed', dtmf: '', seconds: 0, why: 'no result in 4 min' };
+  if (!c || (c.status !== 'done' && c.status !== 'failed')) return { result: 'failed', dtmf: '', report: '', seconds: 0, why: 'no result in 4 min' };
 
-  const turns = (c.transcript ?? []).filter((t) => t.role === 'user').map((t) => t.message ?? '');
-  const said = turns.join(' ');
+  const transcript = c.transcript ?? [];
+  const said = transcript.filter((t) => t.role === 'user').map((t) => t.message ?? '').join(' ');
   const raw = c.metadata?.phone_call?.call_result ?? (said.trim() ? 'answered' : c.status === 'failed' ? 'failed' : 'no_answer');
   const result = raw === 'voicemail' ? 'no_answer' : raw;
+  const { dtmf, report } = result === 'answered' ? readCheckinCall(transcript) : { dtmf: '', report: '' };
   return {
     result,
-    dtmf: result === 'answered' ? digitFrom(turns) : '',
+    dtmf,
+    report,
     seconds: c.metadata?.call_duration_secs ?? 0,
     why: c.metadata?.termination_reason ?? '',
   };
