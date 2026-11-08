@@ -15,10 +15,9 @@ type Request = Infer<typeof RequestRow>;
 type Household = Infer<typeof HouseholdRow>;
 const MAX_ROWS = 200;
 
-type Cat = 'help' | 'waiting' | 'silent' | 'claimed' | 'safe';
+type Cat = 'help' | 'silent' | 'claimed' | 'safe';
 const CATS: { key: Cat; label: string; color: string }[] = [
   { key: 'help', label: 'Needs help', color: 'var(--red)' },
-  { key: 'waiting', label: 'Waiting', color: 'var(--amber)' },
   { key: 'silent', label: 'Silent', color: 'var(--grey)' },
   { key: 'claimed', label: 'Claimed', color: 'var(--blue)' },
   { key: 'safe', label: 'Safe', color: 'var(--green)' },
@@ -28,7 +27,6 @@ function catOf(r: Request): Cat {
   if (r.state === 'closed') return 'safe';
   if (r.state === 'flagged') return 'silent';
   if (r.claimedBy) return 'claimed';
-  if (r.state === 'checkin_text_sent' || r.state === 'call_placed') return 'waiting';
   return 'help';
 }
 
@@ -90,10 +88,9 @@ const Row = memo(function Row({ r, household, now, mine, claimer, fresh, selecte
         </div>
       </div>
       <span className="timer">{timer}</span>
-      <div className={`bar tier-${r.tier}`}><i style={{ width: `${Math.min(100, r.score)}%` }} /></div>
       <span className={`score tier-${r.tier}`}>{r.score}</span>
       <div className="actions">
-        {claimed && <span className="onway">{claimer} is on the way</span>}
+        {claimed && r.state !== 'closed' && <span className="onway">{claimer} is on the way</span>}
         {!claimed && r.state !== 'closed' && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
         {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
         {r.state !== 'closed' && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
@@ -125,7 +122,7 @@ export default function Board() {
   }, [responders]);
 
   const { top, counts, total, open, critical } = useMemo(() => {
-    const c: Record<Cat, number> = { help: 0, waiting: 0, silent: 0, claimed: 0, safe: 0 };
+    const c: Record<Cat, number> = { help: 0, silent: 0, claimed: 0, safe: 0 };
     let crit = 0;
     const shown: Request[] = [];
     for (const r of requests) {
@@ -189,24 +186,15 @@ export default function Board() {
         <a className="btn" href="#/board">Check-ins</a>
       </header>
 
-      <section className="card summary">
-        <div className="sumtop">
-          <div>
-            <span className="eyebrow">Claimed or safe</span> <span className="pct">{handled}%</span>
-          </div>
-          <div className="meta">{open.toLocaleString()} open · {critical.toLocaleString()} critical · {total.toLocaleString()} total</div>
-        </div>
-        <div className="legend">
-          {CATS.map((c) => (
-            <span key={c.key}><b className="dot" style={{ background: c.color }} />{counts[c.key].toLocaleString()} <em>{c.label}</em></span>
-          ))}
-        </div>
-      </section>
-
       <div className="cols">
         <section className="card queue">
           <div className="qhead">
-            <h2>Ranked queue</h2>
+            <div className="qtitle">
+              <h2>Ranked queue</h2>
+              <span className="qstat">
+                <b>{handled}%</b> claimed or safe · {open.toLocaleString()} open · {critical.toLocaleString()} critical
+              </span>
+            </div>
             <div className="tabs">
               <button className={`tab ${filter === 'all' ? 'on' : ''}`} onClick={() => setFilter('all')}>All <span>{total.toLocaleString()}</span></button>
               {CATS.map((c) => (
