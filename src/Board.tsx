@@ -1,13 +1,12 @@
 import { memo, useMemo, useRef, useState } from 'react';
 import DevTools from './DevTools';
-import { isRealReport, useMode } from './mode';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
 import RequestRow from './module_bindings/request_table';
 import HouseholdRow from './module_bindings/household_table';
 import {
-  Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
+  byLevel, Highlighted, Level, levelOf, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
 } from './lib';
 import { personFor } from './policyholders';
 
@@ -19,7 +18,7 @@ type Cat = 'help' | 'silent' | 'claimed' | 'safe';
 const CATS: { key: Cat; label: string; color: string }[] = [
   { key: 'help', label: 'Needs help', color: 'var(--red)' },
   { key: 'silent', label: 'Silent', color: 'var(--grey)' },
-  { key: 'claimed', label: 'Claimed', color: 'var(--blue)' },
+  { key: 'claimed', label: 'Taken', color: 'var(--blue)' },
   { key: 'safe', label: 'Safe', color: 'var(--green)' },
 ];
 
@@ -36,17 +35,12 @@ const STATE_LABEL: Record<string, string> = {
   checkin_text_sent: 'Text sent',
   call_placed: 'Call placed',
   flagged: 'Needs welfare check',
-  claimed: 'Claimed',
+  claimed: 'Taken',
   closed: 'Safe',
 };
 
-function compare(a: Request, b: Request) {
-  return (
-    b.score - a.score ||
-    b.baseScore - a.baseScore ||
-    (a.createdAt.microsSinceUnixEpoch < b.createdAt.microsSinceUnixEpoch ? -1 : 1)
-  );
-}
+// Level first (P1, P2, P3), then whoever has waited longest. The points stay hidden.
+const compare = (a: Request, b: Request) => byLevel(a, b);
 
 type RowProps = {
   r: Request;
@@ -88,10 +82,10 @@ const Row = memo(function Row({ r, household, now, mine, claimer, fresh, selecte
         </div>
       </div>
       <span className="timer">{timer}</span>
-      <span className={`score tier-${r.tier}`}>{r.score}</span>
+      <span className="score"><Level tier={r.tier} /></span>
       <div className="actions">
         {claimed && r.state !== 'closed' && <span className="onway">{claimer} is on the way</span>}
-        {!claimed && r.state !== 'closed' && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
+        {!claimed && r.state !== 'closed' && <button className="btn outline" onClick={stop(onClaim)}>Take case</button>}
         {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
         {r.state !== 'closed' && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
       </div>
@@ -105,8 +99,7 @@ export default function Board() {
   const toast = useToast();
   const now = useNow();
   const [allRequests, ready] = useTable(tables.request);
-  const mode = useMode();
-  const requests = useMemo(() => (mode === 'real' ? allRequests.filter(isRealReport) : allRequests), [allRequests, mode]);
+  const requests = allRequests;
   const [responders] = useTable(tables.responder);
   const [households] = useTable(tables.household);
   const byHandle = useMemo(() => new Map(households.map((h) => [h.handle, h])), [households]);
@@ -182,7 +175,6 @@ export default function Board() {
           <h1>Check-In Command Center</h1>
         </div>
         <span className="spacer" />
-        <span className={`modetag${mode === 'real' ? ' is-real' : ''}`}>{mode === 'real' ? 'Real phones only' : 'Includes fake data'}</span>
         <a className="btn" href="#/board">Check-ins</a>
       </header>
 
@@ -326,7 +318,7 @@ function Detail({ r, household, now, mine, claimer, onClaim, onRelease, onResolv
   const band =
     r.state === 'flagged' ? { tone: 'red', title: 'No contact · go now', sub: `Silent for ${mmss(now - tsMs(r.updatedAt))}` }
     : r.state === 'closed' ? { tone: 'grey', title: 'Resolved', sub: `Closed ${clock(tsMs(r.updatedAt))}` }
-    : claimed ? { tone: 'blue', title: `${claimer || 'A responder'} is on it`, sub: `Claimed ${clock(tsMs(r.updatedAt))}` }
+    : claimed ? { tone: 'blue', title: `${claimer || 'A responder'} is on it`, sub: `Taken ${clock(tsMs(r.updatedAt))}` }
     : { tone: 'amber', title: 'Needs help', sub: `Reported ${clock(tsMs(r.createdAt))} · unclaimed ${mmss(now - tsMs(r.createdAt))}` };
 
   return (
@@ -336,7 +328,7 @@ function Detail({ r, household, now, mine, claimer, onClaim, onRelease, onResolv
           <span className="ttitle">{band.title}</span>
           <span className="tsub">{band.sub}</span>
         </div>
-        <div className="tscore"><span>{r.score}</span><em>urgency</em></div>
+        <div className="tscore"><span>{levelOf(r.tier).label}</span><em>{levelOf(r.tier).name}</em></div>
       </div>
       <div className="tbody">
         <div className="tperson">
@@ -363,7 +355,7 @@ function Detail({ r, household, now, mine, claimer, onClaim, onRelease, onResolv
         )}
 
         <div className="tactions">
-          {!claimed && r.state !== 'closed' && <button className="tbtn main" onClick={() => onClaim(r.id)}>{r.state === 'flagged' ? 'Claim · send someone' : 'Claim'}</button>}
+          {!claimed && r.state !== 'closed' && <button className="tbtn main" onClick={() => onClaim(r.id)}>{r.state === 'flagged' ? 'Take case · send someone' : 'Take case'}</button>}
           {mine && <button className="tbtn" onClick={() => onRelease(r.id)}>Release</button>}
           {r.state !== 'closed' && <button className="tbtn" onClick={() => onResolve(r.id)}>Resolve</button>}
         </div>

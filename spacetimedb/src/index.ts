@@ -10,6 +10,8 @@ import {
   escalationFor,
   parseFacts,
   scoreFacts,
+  levelFor,
+  UNREAD_REASON,
   stateAfterCall,
   stateAfterReply,
   totalScore,
@@ -170,7 +172,7 @@ const checkin = table(
     reply: t.string(), // what they said, if anything
     claimedBy: t.option(t.identity()),
     requestId: t.u64(), // report row once they need help (0 = none)
-    simFate: t.string(), // fake households only: "safe" | "help" | "silent"; "" for real
+    simFate: t.string(), // fake households only: "safe" | "help" | "late" (answers after the re-text or call); "" for real
     simReplyAt: t.timestamp(), // fake households only: when they "reply"
     createdAt: t.timestamp(),
     updatedAt: t.timestamp(), // when it entered its current state (drives the ladder)
@@ -227,9 +229,16 @@ function enqueue(ctx: Ctx, requestId: bigint, kind: string, payload: object, che
   });
 }
 
-/** Write a row back with score recomputed. */
+/** The P1/P2/P3 level a report shows now (rules.ts levelFor): from its facts, whether Claude read it, its state and how long it has waited. */
+function currentLevel(r: RequestRow, nowMicros: bigint): string {
+  const base = scoreFacts(parseFacts(r.facts)).tier;
+  return levelFor(base, r.factsStatus === 'done', r.state, nowMicros - r.createdAt.microsSinceUnixEpoch);
+}
+
+/** Write a row back with its level and (hidden, tie-breaker only) score recomputed. */
 function save(ctx: Ctx, r: RequestRow) {
   r.score = totalScore(r.baseScore, r.escalation, r.state);
+  if (r.state !== 'claimed' && r.state !== 'closed') r.tier = currentLevel(r, ctx.timestamp.microsSinceUnixEpoch);
   ctx.db.request.id.update(r);
 }
 
@@ -374,6 +383,7 @@ export const tick = spacetimedb.reducer({ onSchedule: tickTimer }, { timer: tick
         r.escalation = esc;
         changed = true;
       }
+      if (currentLevel(r, t0) !== r.tier) changed = true; // waited long enough to move up a level
 
       let latestCall = null;
       if (r.state === 'call_placed') {
@@ -425,8 +435,9 @@ export const setFacts = spacetimedb.reducer(
   { requestId: t.u64(), factsJson: t.string(), ok: t.bool() },
   (ctx, { requestId, factsJson, ok }) => {
     const r = getRequest(ctx, requestId);
-    applyFacts(r, ok ? factsJson : '{}'); // failed extraction still gets base score — nobody is dropped
+    applyFacts(r, ok ? factsJson : '{}'); // failed extraction is ranked P2, never last: nobody is dropped
     r.factsStatus = ok ? 'done' : 'failed';
+    if (!ok) r.reasons = JSON.stringify([UNREAD_REASON]);
     if (r.state === 'new') setState(ctx, r, 'waiting');
     save(ctx, r);
   }
@@ -436,7 +447,7 @@ export const claimRequest = spacetimedb.reducer({ requestId: t.u64() }, (ctx, { 
   const r = getRequest(ctx, requestId);
   if (r.claimedBy) {
     const who = ctx.db.responder.identity.find(r.claimedBy)?.name ?? 'another responder';
-    throw new SenderError(`already claimed by ${who}`);
+    throw new SenderError(`already taken by ${who}`);
   }
   if (r.state === 'closed') throw new SenderError('request is closed');
   const prev = { state: r.state, updatedAt: r.updatedAt };
@@ -823,9 +834,10 @@ function tickCheckins(ctx: Ctx) {
       const h = ctx.db.household.id.find(c.householdId);
       if (!h) continue;
 
-      // Fake households "reply" at their rolled time; silent ones walk the whole ladder.
-      if (!h.real && c.simFate !== 'silent' && t0 >= c.simReplyAt.microsSinceUnixEpoch) {
-        applyCheckinReply(ctx, c, c.simFate === 'safe' ? '1' : '2');
+      // Fake households "reply" at their rolled time. "late" ones answer safe after the re-text or the call,
+      // so only real team phones go all the way to urgent on stage.
+      if (!h.real && t0 >= c.simReplyAt.microsSinceUnixEpoch) {
+        applyCheckinReply(ctx, c, c.simFate === 'help' ? '2' : '1');
         continue;
       }
 
@@ -851,12 +863,6 @@ function tickCheckins(ctx: Ctx) {
     }
   }
 }
-
-/** Admin: n fake policyholders across the cities. They already joined storm alerts. */
-export const seedHouseholds = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
-  requireTeammate(ctx, 'Seed households');
-  seedFake(ctx, n);
-});
 
 function seedFake(ctx: Ctx, n: number) {
   const count = Math.min(n, 5000);
@@ -929,13 +935,6 @@ export const resetTeamPhones = spacetimedb.reducer((ctx) => {
   }
 });
 
-/** Admin: remove every household, storm and check-in. */
-export const clearHouseholds = spacetimedb.reducer((ctx) => {
-  requireAdmin(ctx, 'Clear households');
-  for (const c of [...ctx.db.checkin.iter()]) ctx.db.checkin.id.delete(c.id);
-  for (const s of [...ctx.db.storm.iter()]) ctx.db.storm.id.delete(s.id);
-  for (const h of [...ctx.db.household.iter()]) ctx.db.household.id.delete(h.id);
-});
 
 function closeStorm(ctx: Ctx, stormId: bigint) {
   const row = ctx.db.storm.id.find(stormId);
@@ -982,8 +981,9 @@ export const startStorm = spacetimedb.reducer((ctx) => {
     let replyIn = 0n;
     if (!h.real) {
       const roll = ctx.random();
-      simFate = roll < 0.6 ? 'safe' : roll < 0.7 ? 'help' : 'silent';
-      replyIn = BigInt(ctx.random.integerInRange(2, 14)) * DEMO_SECOND;
+      simFate = roll < 0.6 ? 'safe' : roll < 0.7 ? 'help' : 'late';
+      // late: after the re-text (25 s) and before urgent (65 s), so they visibly come back.
+      replyIn = BigInt(simFate === 'late' ? ctx.random.integerInRange(30, 58) : ctx.random.integerInRange(2, 14)) * DEMO_SECOND;
     }
     const c = ctx.db.checkin.insert({
       id: 0n,
@@ -1020,7 +1020,7 @@ export const claimCheckin = spacetimedb.reducer({ checkinId: t.u64() }, (ctx, { 
   const c = getCheckin(ctx, checkinId);
   if (c.claimedBy) {
     const who = ctx.db.responder.identity.find(c.claimedBy)?.name ?? 'another responder';
-    throw new SenderError(`already claimed by ${who}`);
+    throw new SenderError(`already taken by ${who}`);
   }
   if (c.state === 'closed' || c.state === 'safe') throw new SenderError(`check-in is ${c.state}`);
   const prev = { state: c.state, updatedAt: c.updatedAt };
@@ -1115,11 +1115,17 @@ function routeHouseholdMessage(
     applyCheckinReply(ctx, waiting, m.rawText);
     return true;
   }
-  if (/^\s*join\s*$/i.test(m.rawText)) {
-    if (!h) {
+  // "JOIN" signs the phone up; "JOIN Dorothy" also sets the name the board shows (texting it again renames).
+  // Only a short name counts, so a real report that happens to start with "join" is not swallowed.
+  const join = /^\s*join(?:\s+([a-z][a-z'.-]*(?:\s+[a-z][a-z'.-]*){0,2}))?\s*$/i.exec(m.rawText);
+  if (join) {
+    const name = (join[1] ?? '').replace(/\s+/g, ' ').slice(0, 40);
+    if (h) {
+      if (name) ctx.db.household.id.update({ ...ctx.db.household.id.find(h.id)!, name });
+    } else {
       ctx.db.household.insert({
         id: 0n,
-        name: m.victimHandle,
+        name: name || m.victimHandle,
         handle: m.victimHandle,
         platform: m.platform,
         spaceId: m.spaceId,

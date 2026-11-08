@@ -8,9 +8,8 @@ import CheckinRowT from './module_bindings/checkin_table';
 import HouseholdRowT from './module_bindings/household_table';
 import StormRowT from './module_bindings/storm_table';
 import RequestRowT from './module_bindings/request_table';
-import { Highlighted, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
+import { byLevel, Level, levelOf, mmss, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
 import DevTools from './DevTools';
-import { useMode } from './mode';
 
 type Checkin = Infer<typeof CheckinRowT>;
 type Household = Infer<typeof HouseholdRowT>;
@@ -18,20 +17,20 @@ type Storm = Infer<typeof StormRowT>;
 type Request = Infer<typeof RequestRowT>;
 
 const MAX_ROWS = 200;
-// Mirrors spacetimedb/src/rules.ts (S1_RETEXT, S2_CALL, S3_URGENT in demo seconds). Display only.
+// Mirrors spacetimedb/src/rules.ts (S1_RETEXT, S2_CALL in demo seconds). Display only.
 const NEXT_STEP_MS: Record<string, { ms: number; label: string }> = {
-  texted: { ms: 15_000, label: 'Re-text in' },
-  retexted: { ms: 10_000, label: 'Call in' },
-  called: { ms: 10_000, label: 'Urgent in' },
+  texted: { ms: 25_000, label: 'Re-text in' },
+  retexted: { ms: 20_000, label: 'Call in' },
 };
 
 type Bucket = 'urgent' | 'help' | 'waiting' | 'safe' | 'handled';
+// Tabs in the order a household moves: waiting for a reply, then urgent or a report, then claimed, then safe.
 const BUCKETS: { key: Bucket; label: string; color: string }[] = [
+  { key: 'waiting', label: 'No Reply', color: 'var(--grey)' },
   { key: 'urgent', label: 'Urgent', color: 'var(--red)' },
   { key: 'help', label: 'Report', color: 'var(--amber)' },
-  { key: 'waiting', label: 'No Reply', color: 'var(--grey)' },
+  { key: 'handled', label: 'Taken', color: 'var(--blue)' },
   { key: 'safe', label: 'Safe', color: 'var(--green)' },
-  { key: 'handled', label: 'Claimed', color: 'var(--blue)' },
 ];
 
 function bucketOf(c: Checkin): Bucket {
@@ -52,7 +51,7 @@ const STATE_LABEL: Record<string, string> = {
   safe: 'Safe',
   needs_help: 'Report',
   urgent: 'Urgent',
-  claimed: 'Claimed',
+  claimed: 'Taken',
   closed: 'Resolved',
   no_reply: 'No reply',
 };
@@ -71,7 +70,6 @@ export default function CheckinBoard() {
   const [picked, setTab] = useState<Bucket | 'all' | null>(null); // null = follow the most serious non-empty tab
   const [selected, setSelected] = useState<bigint | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
-  const mode = useMode();
 
   const storm = storms.find((s) => s.active) ?? [...storms].sort((a, b) => (a.id < b.id ? 1 : -1))[0];
   const hh = useMemo(() => new Map(households.map((h) => [h.id, h])), [households]);
@@ -81,23 +79,28 @@ export default function CheckinBoard() {
   // Only the latest storm's check-ins count.
   const { mine, counts, rows, tab } = useMemo(() => {
     const list = storm
-      ? checkins.filter((c) => c.stormId === storm.id && (mode === 'all' || hh.get(c.householdId)?.real))
+      ? checkins.filter((c) => c.stormId === storm.id)
       : [];
     const k: Record<Bucket, number> = { urgent: 0, help: 0, waiting: 0, safe: 0, handled: 0 };
     for (const c of list) k[bucketOf(c)]++;
     const tab: Bucket | 'all' = picked ?? (['urgent', 'help', 'waiting'] as Bucket[]).find((b) => k[b] > 0) ?? 'all';
     const shown = tab === 'all' ? [...list] : list.filter((c) => bucketOf(c) === tab);
-    const score = (c: Checkin) => reqs.get(c.requestId)?.score ?? 0;
     const order = ['urgent', 'needs_help', 'called', 'retexted', 'texted', 'no_reply', 'claimed', 'closed', 'safe'];
     shown.sort((a, b) => {
-      if (tab === 'help') return score(b) - score(a);
+      // Team phones stay on top so the audience can follow the real one among the fakes.
+      const realA = hh.get(a.householdId)?.real ? 0 : 1, realB = hh.get(b.householdId)?.real ? 0 : 1;
+      if (realA !== realB) return realA - realB;
+      if (tab === 'help') {
+        const ra = reqs.get(a.requestId), rb = reqs.get(b.requestId);
+        if (ra && rb) return byLevel(ra, rb);
+      }
       if (tab === 'safe' || tab === 'handled') return a.updatedAt.microsSinceUnixEpoch < b.updatedAt.microsSinceUnixEpoch ? 1 : -1;
       // urgent / waiting / all: furthest along the ladder first, then longest waiting
       return order.indexOf(a.state) - order.indexOf(b.state) ||
         (a.updatedAt.microsSinceUnixEpoch < b.updatedAt.microsSinceUnixEpoch ? -1 : 1);
     });
     return { mine: list, counts: k, rows: shown.slice(0, MAX_ROWS), tab };
-  }, [checkins, storm, picked, reqs, mode, hh]);
+  }, [checkins, storm, picked, reqs, hh]);
 
   const total = mine.length;
   const pct = total ? Math.round((counts.safe / total) * 100) : 0;
@@ -122,7 +125,6 @@ export default function CheckinBoard() {
           <h1>Check-In Command Center</h1>
         </div>
         <span className="spacer" />
-        <span className={`modetag${mode === 'real' ? ' is-real' : ''}`}>{mode === 'real' ? 'Real phones only' : 'Includes fake data'}</span>
         <span className={`live ${isActive ? 'on' : ''}`} role="status">{isActive ? 'Live' : 'Reconnecting…'}</span>
         <StormChip storm={storm} now={now} inZone={total} />
       </header>
@@ -130,21 +132,21 @@ export default function CheckinBoard() {
       <div className="cols">
         <section className="card queue">
           <div className="qhead">
-            <div className="qtitle">
-              <h2>Households in the impact area</h2>
-              <span className="qstat">
-                <b>{pct}%</b> checked in safe
-              </span>
-            </div>
+            <h2>Households in the impact area</h2>
+            <div className="qbar">
             <div className="tabs" role="tablist" aria-label="Filter households">
+              <button role="tab" aria-selected={tab === 'all'} className={`tab ${tab === 'all' ? 'on' : ''}`} onClick={() => setTab('all')}>
+                All <span>{total.toLocaleString()}</span>
+              </button>
               {BUCKETS.map((b) => (
                 <button key={b.key} role="tab" aria-selected={tab === b.key} className={`tab ${tab === b.key ? 'on' : ''}`} onClick={() => setTab(b.key)}>
                   <b className="dot" style={{ background: b.color }} />{b.label} <span>{counts[b.key].toLocaleString()}</span>
                 </button>
               ))}
-              <button role="tab" aria-selected={tab === 'all'} className={`tab ${tab === 'all' ? 'on' : ''}`} onClick={() => setTab('all')}>
-                All <span>{total.toLocaleString()}</span>
-              </button>
+            </div>
+            <span className="qstat">
+              <b>{pct}%</b> checked in safe
+            </span>
             </div>
           </div>
           <div className="list" role="tabpanel">
@@ -220,6 +222,7 @@ function StormChip({ storm, now, inZone }: { storm?: Storm; now: number; inZone:
 }
 
 function nextStep(c: Checkin, now: number) {
+  if (c.state === 'called' && !c.claimedBy) return 'Calling…'; // urgent waits for the real call to end, so no countdown
   const step = NEXT_STEP_MS[c.state];
   if (!step || c.claimedBy) return '';
   const left = step.ms - (now - tsMs(c.updatedAt));
@@ -231,15 +234,18 @@ type RowProps = {
   onOpen: (id: bigint) => void; onClaim: (id: bigint) => void; onRelease: (id: bigint) => void; onResolve: (id: bigint) => void;
 };
 
+// The list shows why a report ranks where it does ("medical: oxygen"); the full message is in the side panel.
+const rowReason = (req: Request) => parseReasons(req.reasons).join(' · ') || req.rawText.split('\n')[0];
+
 const canClaim = (c: Checkin) => !c.claimedBy && ['urgent', 'needs_help', 'texted', 'retexted', 'called', 'no_reply'].includes(c.state);
 const canResolve = (c: Checkin, mine: boolean) => c.state === 'urgent' || c.state === 'needs_help' || c.state === 'no_reply' || mine;
 
-const CheckinRow = memo(function CheckinRow({ c, h, req, now, claimer, mine, selected, onOpen, onClaim, onRelease, onResolve }: RowProps) {
+const CheckinRow = memo(function CheckinRow({ c, h, req, now, mine, selected, onOpen, onClaim, onRelease, onResolve }: RowProps) {
   const b = bucketOf(c);
   const stop = (fn: (id: bigint) => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn(c.id); };
   return (
     <div
-      className={`row crow ${b === 'urgent' ? 'flagged' : ''} ${selected ? 'selected' : ''}`}
+      className={`row crow ${selected ? 'selected' : ''}`}
       onClick={() => onOpen(c.id)}
       onKeyDown={(e) => { if (e.key === 'Enter') onOpen(c.id); }}
       tabIndex={0}
@@ -252,13 +258,12 @@ const CheckinRow = memo(function CheckinRow({ c, h, req, now, claimer, mine, sel
       <div className="main">
         <div className="name">{h?.name ?? 'Unknown household'}{h?.real && <span className="realtag">team phone</span>}</div>
         <div className="text">
-          {req ? req.rawText.split('\n')[0] : h ? `${h.address}, ${h.city}${h.age ? ` · age ${h.age}` : ''}` : ''}
+          {req ? rowReason(req) : h ? `${h.address}, ${h.city}${h.age ? ` · age ${h.age}` : ''}` : ''}
         </div>
       </div>
-      <span className={`score ${req ? `tier-${req.tier}` : ''}`}>{req ? req.score : ''}</span>
+      <span className="score">{req ? <Level tier={req.tier} /> : b === 'urgent' ? <Level tier="critical" /> : null}</span>
       <div className="actions">
-        {c.claimedBy && c.state !== 'closed' && <span className="onway">{claimer} is on it</span>}
-        {canClaim(c) && <button className="btn outline" onClick={stop(onClaim)}>Claim</button>}
+        {canClaim(c) && <button className="btn outline" onClick={stop(onClaim)}>Take case</button>}
         {mine && <button className="btn" onClick={stop(onRelease)}>Release</button>}
         {canResolve(c, mine) && <button className="btn" onClick={stop(onResolve)}>Resolve</button>}
       </div>
@@ -266,33 +271,34 @@ const CheckinRow = memo(function CheckinRow({ c, h, req, now, claimer, mine, sel
   );
 });
 
-function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onResolve }: Omit<RowProps, 'selected' | 'onOpen'>) {
+function CheckinDetail({ c, h, req, now, mine, onClaim, onRelease, onResolve }: Omit<RowProps, 'selected' | 'onOpen'>) {
   const [outbox] = useTable(tables.outbox);
   const [calls] = useTable(tables.call);
   const b = bucketOf(c);
   const [chatOpen, setChatOpen] = useState(false);
-  const quotes = req ? parseQuotes(req.facts) : [];
   const reasons = req ? parseReasons(req.reasons) : [];
 
   // Step times: the alert is the check-in's own start; later steps only when a real text/call row exists.
   const sent = outbox.filter((o) => o.checkinId === c.id && o.kind === 'send_text').sort((x, y) => tsMs(x.createdAt) - tsMs(y.createdAt));
   const call = calls.filter((x) => x.checkinId === c.id).sort((x, y) => tsMs(y.createdAt) - tsMs(x.createdAt))[0];
   const clock = (ms?: number) => (ms ? new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '');
+  // A placed call they never picked up stays "not answered", even after someone claims or resolves it.
+  const missedCall = c.callsPlaced > 0 && call?.result !== 'answered' && c.reply === '' && c.state !== 'called';
   const steps = [
     { label: c.textsSent >= 2 ? 'Re-texted' : 'Re-text', done: c.textsSent >= 2, bad: false, at: clock(sent[1] ? tsMs(sent[1].createdAt) : undefined) },
     {
-      label: c.callsPlaced === 0 ? 'Phone call' : c.state === 'urgent' ? 'Call not answered' : call?.result === 'answered' ? 'Call answered' : 'Called',
-      done: c.callsPlaced > 0, bad: c.state === 'urgent', at: clock(call ? tsMs(call.createdAt) : undefined),
+      label: c.callsPlaced === 0 ? 'Phone call' : missedCall ? 'Call not answered' : call?.result === 'answered' ? 'Call answered' : 'Calling…',
+      done: c.callsPlaced > 0, bad: missedCall, at: clock(call ? tsMs(call.createdAt) : undefined),
     },
   ];
 
-  const timer = nextStep(c, now).replace(/^\D+/, '') || (req ? String(req.score) : '');
+  const timer = nextStep(c, now).replace(/^\D+/, '') || (req ? `${levelOf(req.tier).label} · ${levelOf(req.tier).name}` : b === 'urgent' ? 'P1 · Go now' : '');
   const statusText: Record<Bucket, string> = {
     urgent: 'No contact: welfare check',
     help: 'Needs help',
     waiting: c.state === 'no_reply' ? 'No reply (storm ended)' : 'Waiting for a reply',
     safe: 'Checked in safe',
-    handled: c.state === 'closed' ? 'Resolved' : `${claimer || 'A responder'} is on it`,
+    handled: c.state === 'closed' ? 'Resolved' : 'Taken',
   };
 
   return (
@@ -313,7 +319,7 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
           {c.textsSent >= 2 && <div className="tout">{STORM_RETEXT}<span className="tat">{clock(sent[1] ? tsMs(sent[1].createdAt) : undefined)}</span></div>}
           {c.callsPlaced > 0 && <div className={`tcall ${steps[1].bad ? 'bad' : ''}`}>{steps[1].label} {steps[1].at}</div>}
           {c.reply
-            ? <div className="tin">{req ? <Highlighted text={req.rawText} quotes={quotes} /> : c.reply}</div>
+            ? <div className="tin">{req ? req.rawText : c.reply}</div>
             : <div className="tcall">No reply yet</div>}
         </div>
       )}
@@ -353,17 +359,15 @@ function CheckinDetail({ c, h, req, now, claimer, mine, onClaim, onRelease, onRe
         </div>
       </div>
 
-      {reasons.length > 0 && (
+      {req && (
         <div className="gsec">
-          <div className="glabel">Why first</div>
-          <div className="ggroup">
-            {reasons.map((x) => <div key={x} className="grow"><span className="gtext">{x}</span></div>)}
-          </div>
+          <div className="glabel">Their report{reasons.length > 0 ? ` · ${reasons.join(' · ')}` : ''}</div>
+          <div className="ggroup gquote">{req.rawText}</div>
         </div>
       )}
 
       <div className="gactions">
-        {canClaim(c) && <button className={`gbtn gb-${b}`} onClick={() => onClaim(c.id)}>{b === 'urgent' ? 'Claim and send someone' : 'Claim'}</button>}
+        {canClaim(c) && <button className={`gbtn gb-${b}`} onClick={() => onClaim(c.id)}>{b === 'urgent' ? 'Take case · send someone' : 'Take case'}</button>}
         {mine && <button className="gbtn plain" onClick={() => onRelease(c.id)}>Release</button>}
         {canResolve(c, mine) && <button className="gbtn plain" onClick={() => onResolve(c.id)}>Mark resolved</button>}
       </div>
@@ -377,10 +381,10 @@ const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if 
 
 function Check({ on = false }: { on?: boolean }) {
   return on
-    ? <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#30d158" strokeWidth="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
+    ? <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
     : <span className="gmark empty" aria-hidden="true" />;
 }
 
 function Cross() {
-  return <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff453a" strokeWidth="2.4" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>;
+  return <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2.4" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>;
 }

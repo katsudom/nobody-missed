@@ -108,11 +108,48 @@ export function scoreFacts(f: Facts): { baseScore: number; tier: Tier; reasons: 
     reasons.push(`${f.people} people`);
   }
 
-  return { baseScore: base, tier: tierFor(base), reasons };
+  return { baseScore: base, tier: tierFor({ powerMedical: powerMed.length > 0, danger: danger.length > 0, vulnerable: vulnerable.length > 0 }), reasons };
 }
 
-export function tierFor(base: number): Tier {
-  return base >= 60 ? 'critical' : base >= 30 ? 'high' : 'normal';
+// ---------- Priority levels: P1 (critical) / P2 (high) / P3 (normal) ----------
+// What responders see. The points above stay only as a hidden tie-breaker.
+
+/**
+ * P1 "go now": power-dependent medical, or danger AND a vulnerable person.
+ * P2 "go soon": danger, or a vulnerable person.
+ * P3 "check when you can": everything else.
+ */
+export function tierFor(f: { powerMedical: boolean; danger: boolean; vulnerable: boolean }): Tier {
+  if (f.powerMedical || (f.danger && f.vulnerable)) return 'critical';
+  if (f.danger || f.vulnerable) return 'high';
+  return 'normal';
+}
+
+/** Shown when Claude could not read the message: it is ranked P2 so a person reads it soon. */
+export const UNREAD_REASON = "AI couldn't read this: check it";
+
+/**
+ * Waiting moves a report up: P3 becomes P2 after 30 minutes, P2 becomes P1 after 15 minutes more.
+ * Real minutes even in DEMO mode: demo seconds would turn every report P1 within a minute.
+ */
+export const AGE_P3_TO_P2 = 30n * MIN;
+export const AGE_P2_TO_P1 = 15n * MIN;
+
+const RANK: Record<Tier, number> = { critical: 1, high: 2, normal: 3 };
+const BY_RANK: Tier[] = ['critical', 'critical', 'high', 'normal'];
+
+/**
+ * The level a report shows right now.
+ * base: level from the facts. read: false if Claude has not read it (failed or still pending) → at least P2.
+ * flagged (nobody reached them after text and call) → P1. Then waiting moves it up.
+ */
+export function levelFor(base: Tier, read: boolean, state: string, waitingMicros: bigint): Tier {
+  if (state === 'flagged') return 'critical';
+  let rank = RANK[base];
+  if (!read) rank = Math.min(rank, 2);
+  if (rank === 3 && waitingMicros >= AGE_P3_TO_P2) { rank = 2; waitingMicros -= AGE_P3_TO_P2; }
+  if (rank === 2 && waitingMicros >= AGE_P2_TO_P1) rank = 1;
+  return BY_RANK[rank];
 }
 
 export function escalationFor(sinceCreatedMicros: bigint): number {
@@ -203,11 +240,11 @@ export const STORM_AUTO_SEED = 100;
 export const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if you need help.';
 
 /** Re-text if no reply to the first alert. */
-export const S1_RETEXT = 15n * UNIT;
+export const S1_RETEXT = 25n * UNIT;
 /** Call if still no reply after the re-text. */
-export const S2_CALL = 10n * UNIT;
+export const S2_CALL = 20n * UNIT;
 /** Urgent if the call was never placed / never answered. */
-export const S3_URGENT = 10n * UNIT;
+export const S3_URGENT = 20n * UNIT;
 
 export type CheckinState =
   | 'texted' // first alert sent, waiting for a reply

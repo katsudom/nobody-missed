@@ -38,7 +38,7 @@ export default function UndoTray() {
       const name = r
         ? personFor(r, byHandle.get(r.victimHandle)).name
         : byId.get(chks.get(u.caseId)?.householdId ?? 0n)?.name ?? 'household';
-      out.push({ id: u.id, verb: u.action === 'claim' ? 'Claimed' : 'Resolved', name, doneAt: tsMs(u.doneAt) });
+      out.push({ id: u.id, verb: u.action === 'claim' ? 'Took case for' : 'Resolved', name, doneAt: tsMs(u.doneAt) });
     }
     return out.sort((a, b) => b.doneAt - a.doneAt);
   }, [undos, requests, checkins, households, me]);
