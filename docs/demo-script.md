@@ -32,7 +32,7 @@ Optional: a teammate opens the site on a second laptop to try taking the same ca
 |---|---|---|
 | **0:00** | Board is empty. | "When a storm hits, 911 is flooded with calls from people who are fine, and the people in real trouble often can't call at all." |
 | **0:10** | Click **Start storm**, then close the Dev panel. Hold up the phone when it dings. | "State Farm knows every policyholder in the storm zone, so we text all of them at once." |
-| **0:15–0:40** | Point at rows turning **Safe**. Open a **Needs help** case, show its P1/P2/P3 and why. | "Most people reply 1 and drop off the list. Anyone who replies 2 is ranked by risk, and we show why." |
+| **0:15–0:40** | Point at a row turning **Safe**. Then open a **Report** case and show its P1/P2/P3, the reason and the highlighted words. | "This one replied 1, so they're off the list. This one replied 2, so they're ranked by risk, and we show why." |
 | **0:40** | Click **Take case**. Teammate clicks it on the same case. | "Only one responder gets it, so nobody shows up at the same house twice." |
 | **0:45** | Point at the **TEAM PHONE** row, pinned at the top. The re-text arrives. **Don't reply.** | "The people who matter most are the ones who go quiet. She hasn't answered, so we text again." |
 | **1:05** | **Phone rings.** Hold it up, don't answer. | "Still nothing, so we call." |
@@ -50,3 +50,22 @@ Optional: a teammate opens the site on a second laptop to try taking the same ca
 
 Timings assume the demo timers: re-text at 25 s, call 20 s later, urgent 20 s after that.
 
+---
+
+## Encore (20 s, if a judge has time)
+
+Shows Claude working live on the real phone. One phone can't go silent and reply in the same storm, so this is a separate run.
+
+1. Dev → **Reset** → **Reset demo**.
+2. **Demo** → **Start storm**.
+3. When the alert arrives, she replies with the whole situation in **one text**, not a number. Ask a judge for a sentence, or use: *"Mom is 82, on oxygen, power's out"*.
+4. Within a few seconds her row becomes a **Report** at **P1**, with the reason and her words highlighted.
+
+| Say | |
+|---|---|
+| "Give me any sentence someone might text in a storm." | Nobody can call it hardcoded. |
+| "Claude only pulled out the facts. Our rules set the level, and a person makes the call." | Point at the highlighted words. |
+
+- A bare **"2"** has no details to read, so it lands at **P3**. Have her type the situation.
+- To show safe instead: she replies **1**, and her row flips to **Safe** right away.
+- Afterward: **Reset demo** before the next judge.
