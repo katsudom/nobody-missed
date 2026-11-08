@@ -1,7 +1,7 @@
 # Status (2026-11-07)
 
 ## Goal
-Steps 1-8 of docs/HANDOFF-PROMPT.md. Step 6 DONE. Next: Step 7 (ElevenLabs calls), only after Dominic says go.
+Steps 1-8 of docs/HANDOFF-PROMPT.md. Steps 1-6 DONE + storm check-ins live. Next: Step 7 (phone calls), Dominic said go (new session).
 
 ## Done
 - 1 tooling, 2 scaffold, 3 module (published to Maincloud `nobody-missed`), 4 board (Dorothy's PRs #1 + #13, live on Vercel), 5 Claude bridge (verified live).
@@ -16,8 +16,9 @@ Steps 1-8 of docs/HANDOFF-PROMPT.md. Step 6 DONE. Next: Step 7 (ElevenLabs calls
 
 - Storm flow verified live 2026-11-07: fixed area Richardson, team phone joined via JOIN, Start storm -> alert arrived (re-text after 15 s), reply 1 -> checkin 212 safe. Teammate role (storms/seed/inject) vs admin (resets) live. Reply 2 on a storm not yet tried on a real phone.
 
-## Planned, NOT built (Dominic: plan only, don't code yet)
-- Call only after 2 unanswered check-in texts (the first one counts). Today: 1 unanswered text -> call. Will use request.checkinsSent. Needs SPEC §1/§4 update when built.
+## Planned, NOT built
+- 2-minute demo timeline + demo timers (25/20/20 s) + Skip ahead button: docs/demo-plan.md. Build after Step 7. (Dominic: plan only, don't code yet)
+- Call only after 2 unanswered check-in texts (the first one counts): the STORM ladder already does this (text -> re-text -> call). Still open for the old victim-texts-first request flow only.
 
 ## Open questions for Dominic
 - Reply 2 sends no confirmation text (SPEC has none). Fine or add one? (flow change, ask first)
@@ -28,7 +29,7 @@ Steps 1-8 of docs/HANDOFF-PROMPT.md. Step 6 DONE. Next: Step 7 (ElevenLabs calls
 - Step 7: ElevenLabs outbound call via Photon SIP (needs a purchased Photon SMS/voice number; 15 free call minutes, few test calls). Then Step 8 (demo script SPEC sec 2).
 
 ## Running
-- Bridge in a terminal tab started by the Step 6 session (`cd bridge; npm start`). Must stay open. Only ONE bridge at a time (two pollers would double-submit).
+- Bridge: stopped at handoff. The next session starts it in its own terminal tab (`cd bridge; npm start`) so it can read the log. Only ONE bridge at a time (two pollers would double-submit). After any module publish that changes tables, restart it (old bindings crash).
 
 ## Team
-- Dorothy: case list; Kevin: top bar/name prompt/side panel; Will: victim-sim page + pitch. Teammates PR, Dominic merges (squash).
+- Dorothy (GitHub wonillionaire): storm check-ins + current site; bakudan01 made #15 (dropped); Kevin: top bar/name prompt/side panel; Will: victim-sim page + pitch. Teammates PR, Dominic merges (squash).
