@@ -277,3 +277,68 @@ export function checkinAfterCall(result: string, dtmf: string): CheckinState {
   return d === '1' ? 'safe' : d === '2' ? 'needs_help' : 'urgent';
 }
 
+
+// ---------- Household profile (what we know before the storm) ----------
+// Collected once when a phone joins, like the policy file an insurer already has. Shapes the follow-up
+// text after a "2" and fills the report before Claude has read their message, so nobody is asked twice.
+
+/** Sent right after JOIN. Any answer is read by Claude into a profile; SKIP leaves it empty. */
+export const PROFILE_QUESTION =
+  "You're signed up for storm check-ins. So help can come ready, reply with anything we should know: " +
+  'how many people live with you, kids, pets, oxygen, dialysis, insulin, a wheelchair. Reply SKIP to leave it blank.';
+export const PROFILE_THANKS = "Thanks, we saved that. We'll check on you when a storm hits.";
+export const isSkip = (text: string) => /^\s*skip\s*$/i.test(text);
+
+export interface Profile {
+  age?: number | null;
+  people?: number | null;
+  medical?: string[];
+  children?: boolean;
+  pets?: boolean;
+}
+
+export function parseProfile(json: string): Profile {
+  return parseFacts(json) as Profile;
+}
+
+/** True when the profile says anything at all (an empty one changes nothing). */
+export function hasProfile(p: Profile): boolean {
+  return !!(p.age || p.people || p.medical?.length || p.children || p.pets);
+}
+
+/**
+ * Report facts = what they told us now, plus what was on file. The message wins where both say something
+ * (a number); lists are joined. `onFile` lists what came only from the profile, so the board can say so.
+ */
+export function mergeProfile(f: Facts, p: Profile, householdAge = 0): Facts & { onFile?: string[] } {
+  const onFile: string[] = [];
+  const age = f.age ?? (p.age || householdAge || null);
+  if (f.age == null && age) onFile.push(`age ${age}`);
+  const people = f.people ?? p.people ?? null;
+  if (f.people == null && p.people) onFile.push(`${p.people} people`);
+  const said = lower(f.medical);
+  const extra = lower(p.medical).filter((m) => !said.includes(m));
+  onFile.push(...extra);
+  const children = !!f.children || !!p.children;
+  if (!f.children && p.children) onFile.push('kids');
+  if (p.pets) onFile.push('pets');
+  return { ...f, age, people, medical: [...said, ...extra], children, onFile };
+}
+
+/** The one question that matters most for this household, asked first in the follow-up. */
+export function profileQuestion(p: Profile): string {
+  const m = lower(p.medical);
+  if (m.includes('oxygen') || m.includes('ventilator')) return 'Is your oxygen still working, and how long will your backup power last?';
+  if (m.includes('dialysis')) return 'When is your next dialysis due?';
+  if (m.includes('insulin')) return 'Is your insulin still cold?';
+  if (m.includes('mobility')) return 'Can you get out of the house on your own?';
+  if (p.children) return 'Are the kids with you and safe?';
+  if (typeof p.age === 'number' && p.age >= 75) return 'Is anyone with you right now?';
+  return 'How many people are with you, and is anyone hurt?';
+}
+
+/** Texted right after a "2": help is coming, the question that fits them, then what to tell us. */
+export function followUpText(p: Profile): string {
+  return `We got your reply and help is on the way. ${profileQuestion(p)} ` +
+    'Tell us what is happening in a few words (trapped, flooding, injured, no power).';
+}

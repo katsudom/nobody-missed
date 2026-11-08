@@ -22,4 +22,7 @@ export default __t.row({
   age: __t.u32(),
   policy: __t.string(),
   real: __t.bool(),
+  profile: __t.string(),
+  profileText: __t.string().name("profile_text"),
+  profileStep: __t.string().name("profile_step"),
 });

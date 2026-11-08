@@ -1,5 +1,5 @@
 // Bridge (SPEC §7). Thin: moves events in and drains the outbox. Decides nothing.
-// extract_facts -> Claude -> setFacts.  send_text -> Photon iMessage.  Photon inbound -> submitRequest / victimReplied.
+// extract_facts -> Claude -> setFacts.  extract_profile (answer to the JOIN question) -> Claude -> setProfile.  send_text -> Photon iMessage.  Photon inbound -> submitRequest / victimReplied.
 // place_call -> ElevenLabs over the Photon SIP number -> checkinCallResult (storm) / callResult (request).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -113,6 +113,31 @@ async function handleExtract(o: { id: bigint; requestId: bigint; payload: string
   }
 }
 
+/** A household's answer to the profile question after JOIN: same extractor, saved on the household. */
+async function handleProfile(o: { id: bigint; payload: string }) {
+  const key = o.id.toString();
+  if (busy.has(key)) return;
+  busy.add(key);
+  try {
+    if (!(await take(o.id))) return;
+    const p = JSON.parse(o.payload) as { text: string; householdId: string };
+    const householdId = BigInt(p.householdId);
+    try {
+      const facts = await extractFacts(p.text);
+      await conn.reducers.setProfile({ householdId, factsJson: JSON.stringify(facts), ok: true });
+      await conn.reducers.completeOutbox({ outboxId: o.id, ok: true, externalId: '' });
+      console.log(`bridge: household ${householdId} profile ok (${facts.medical.join('+') || 'no medical'})`);
+    } catch (err) {
+      console.error(`bridge: household ${householdId} profile extraction failed:`, err instanceof Error ? err.message : err);
+      // Their words are already saved on the household; the module still checks them for an emergency.
+      await conn.reducers.setProfile({ householdId, factsJson: '{}', ok: false }).catch(() => {});
+      await conn.reducers.completeOutbox({ outboxId: o.id, ok: false, externalId: '' }).catch(() => {});
+    }
+  } finally {
+    busy.delete(key);
+  }
+}
+
 const CALL_MAX_AGE_MS = 60_000; // older queued calls are leftovers from earlier runs: never ring them
 
 async function handleCall(o: { id: bigint; requestId: bigint; checkinId: bigint; payload: string; createdAt: { microsSinceUnixEpoch: bigint } }) {
@@ -149,6 +174,7 @@ async function handleCall(o: { id: bigint; requestId: bigint; checkinId: bigint;
 function handle(o: { id: bigint; requestId: bigint; checkinId: bigint; kind: string; status: string; payload: string; createdAt: { microsSinceUnixEpoch: bigint } }) {
   if (o.status !== 'queued') return;
   if (o.kind === 'extract_facts') void handleExtract(o);
+  else if (o.kind === 'extract_profile') void handleProfile(o);
   else if (o.kind === 'send_text') void handleSendText(o);
   else if (o.kind === 'place_call') void handleCall(o);
 }

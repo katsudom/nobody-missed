@@ -117,6 +117,7 @@ export function CaseFacts({ r }: { r: Request }) {
   if (typeof f.location === 'string' && f.location) readouts.push(['Location', f.location]);
   const medical = strings(f.medical);
   const hazards = strings(f.hazards);
+  const onFile = strings(f.onFile); // filled from their household profile, not said in this message
 
   if (readouts.length === 0 && medical.length === 0 && hazards.length === 0) {
     return (
@@ -147,6 +148,7 @@ export function CaseFacts({ r }: { r: Request }) {
           ))}
         </div>
       )}
+      {onFile.length > 0 && <p className="dc-muted">From their file: {onFile.join(', ')}</p>}
     </div>
   );
 }
