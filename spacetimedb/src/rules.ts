@@ -168,3 +168,67 @@ export function stateAfterReply(text: string): State {
 }
 
 export const CHECKIN_TEXT = 'Still need help? Reply 1 yes, 2 no.';
+
+// ---------- Storm check-ins (docs/checkin-plan.md) ----------
+// We text every household in the storm zone first; silent ones get re-texted, called, then go urgent.
+
+export const STORM_TEXT =
+  'Storm alert from State Farm. Reply 1 if you are safe. Reply 2 if you need help.';
+export const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if you need help.';
+
+/** Re-text if no reply to the first alert. */
+export const S1_RETEXT = 15n * UNIT;
+/** Call if still no reply after the re-text. */
+export const S2_CALL = 10n * UNIT;
+/** Urgent if the call was never placed / never answered. */
+export const S3_URGENT = 10n * UNIT;
+
+export type CheckinState =
+  | 'texted' // first alert sent, waiting for a reply
+  | 'retexted' // second text sent
+  | 'called' // call placed
+  | 'safe' // replied 1 / pressed 1
+  | 'needs_help' // replied 2 or anything else / pressed 2
+  | 'urgent' // no contact after text, re-text and call
+  | 'claimed'
+  | 'closed';
+
+export const AWAITING: CheckinState[] = ['texted', 'retexted', 'called'];
+
+export type CheckinAction = { state: CheckinState; outbox?: 'send_text' | 'place_call' } | null;
+
+/**
+ * What the tick does with one check-in that is still waiting for a reply.
+ * `latestCall` is only known for real households; fake ones never answer the phone.
+ */
+export function decideCheckin(state: string, sinceStateMicros: bigint, latestCall: LatestCall): CheckinAction {
+  if (state === 'texted' && sinceStateMicros >= S1_RETEXT) return { state: 'retexted', outbox: 'send_text' };
+  if (state === 'retexted' && sinceStateMicros >= S2_CALL) return { state: 'called', outbox: 'place_call' };
+  if (state === 'called') {
+    if (latestCall && latestCall.result !== 'failed' && latestCall.result !== 'no_answer' && latestCall.result !== 'busy') {
+      // Ringing or placing: give the phone time to ring (real seconds).
+      if (sinceStateMicros >= CALL_RESULT_TIMEOUT) return { state: 'urgent' };
+      return null;
+    }
+    if (sinceStateMicros >= S3_URGENT) return { state: 'urgent' };
+  }
+  return null;
+}
+
+/** A household texted back during a storm: "1" means safe, anything else means they need help. */
+export function checkinAfterReply(text: string): 'safe' | 'needs_help' {
+  return text.trim() === '1' ? 'safe' : 'needs_help';
+}
+
+/** A finished check-in call: pressed 1 → safe, pressed 2 → needs help, otherwise urgent. */
+export function checkinAfterCall(result: string, dtmf: string): CheckinState {
+  if (result.toLowerCase() !== 'answered') return 'urgent';
+  const d = dtmf.trim();
+  return d === '1' ? 'safe' : d === '2' ? 'needs_help' : 'urgent';
+}
+
+/** Point-in-circle on the 0..1 map. */
+export function inZone(x: number, y: number, cx: number, cy: number, r: number): boolean {
+  const dx = x - cx, dy = y - cy;
+  return dx * dx + dy * dy <= r * r;
+}

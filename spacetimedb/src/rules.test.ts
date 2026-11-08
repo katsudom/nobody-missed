@@ -114,3 +114,51 @@ test('victim replies', () => {
   assert.equal(stateAfterReply('1'), 'waiting');
   assert.equal(stateAfterReply('water is rising'), 'waiting');
 });
+
+// ---------- Storm check-ins ----------
+import {
+  decideCheckin,
+  checkinAfterReply,
+  checkinAfterCall,
+  inZone,
+  S1_RETEXT,
+  S2_CALL,
+  S3_URGENT,
+} from './rules.ts';
+
+test('check-in ladder: text → re-text → call → urgent', () => {
+  assert.equal(decideCheckin('texted', S1_RETEXT - 1n, null), null);
+  assert.deepEqual(decideCheckin('texted', S1_RETEXT, null), { state: 'retexted', outbox: 'send_text' });
+  assert.equal(decideCheckin('retexted', S2_CALL - 1n, null), null);
+  assert.deepEqual(decideCheckin('retexted', S2_CALL, null), { state: 'called', outbox: 'place_call' });
+  assert.equal(decideCheckin('called', S3_URGENT - 1n, null), null);
+  assert.deepEqual(decideCheckin('called', S3_URGENT, null), { state: 'urgent' });
+});
+
+test('check-in call: ringing waits, no answer goes urgent', () => {
+  assert.equal(decideCheckin('called', S3_URGENT, { result: 'ringing', ageMicros: 0n }), null);
+  assert.deepEqual(decideCheckin('called', CALL_RESULT_TIMEOUT, { result: 'ringing', ageMicros: 0n }), { state: 'urgent' });
+  assert.deepEqual(decideCheckin('called', S3_URGENT, { result: 'no_answer', ageMicros: 0n }), { state: 'urgent' });
+});
+
+test('finished states never move on their own', () => {
+  for (const s of ['safe', 'needs_help', 'urgent', 'claimed', 'closed']) {
+    assert.equal(decideCheckin(s, 10n ** 12n, null), null);
+  }
+});
+
+test('check-in replies and calls', () => {
+  assert.equal(checkinAfterReply(' 1 '), 'safe');
+  assert.equal(checkinAfterReply('2'), 'needs_help');
+  assert.equal(checkinAfterReply('water is rising'), 'needs_help');
+  assert.equal(checkinAfterCall('answered', '1'), 'safe');
+  assert.equal(checkinAfterCall('answered', '2'), 'needs_help');
+  assert.equal(checkinAfterCall('answered', ''), 'urgent');
+  assert.equal(checkinAfterCall('no_answer', ''), 'urgent');
+});
+
+test('storm zone circle', () => {
+  assert.equal(inZone(0.5, 0.5, 0.5, 0.5, 0.1), true);
+  assert.equal(inZone(0.6, 0.5, 0.5, 0.5, 0.1), true);
+  assert.equal(inZone(0.61, 0.5, 0.5, 0.5, 0.1), false);
+});
