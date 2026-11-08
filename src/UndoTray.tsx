@@ -5,7 +5,7 @@ import { useMemo, useRef } from 'react';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import { tsMs, useNow, useRun } from './lib';
-import { personFor } from './policyholders';
+import { maskPhone, personFor } from './policyholders';
 
 // Mirrors UNDO_WINDOW in spacetimedb/src/rules.ts. Display only.
 const UNDO_MS = 30_000;
@@ -37,7 +37,7 @@ export default function UndoTray() {
       const r = u.caseKind === 'request' ? reqs.get(u.caseId) : undefined;
       const name = r
         ? personFor(r, byHandle.get(r.victimHandle)).name
-        : byId.get(chks.get(u.caseId)?.householdId ?? 0n)?.name ?? 'household';
+        : maskPhone(byId.get(chks.get(u.caseId)?.householdId ?? 0n)?.name ?? 'household');
       out.push({ id: u.id, verb: u.action === 'claim' ? 'Took case for' : 'Resolved', name, doneAt: tsMs(u.doneAt) });
     }
     return out.sort((a, b) => b.doneAt - a.doneAt);

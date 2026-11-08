@@ -10,6 +10,7 @@ import StormRowT from './module_bindings/storm_table';
 import RequestRowT from './module_bindings/request_table';
 import { byLevel, Level, levelOf, mmss, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
 import DevTools from './DevTools';
+import { maskPhone } from './policyholders';
 
 type Checkin = Infer<typeof CheckinRowT>;
 type Household = Infer<typeof HouseholdRowT>;
@@ -249,16 +250,16 @@ const CheckinRow = memo(function CheckinRow({ c, h, req, now, mine, selected, on
       onClick={() => onOpen(c.id)}
       onKeyDown={(e) => { if (e.key === 'Enter') onOpen(c.id); }}
       tabIndex={0}
-      aria-label={`${h?.name ?? 'Household'}: ${STATE_LABEL[c.state] ?? c.state}`}
+      aria-label={`${h ? maskPhone(h.name) : 'Household'}: ${STATE_LABEL[c.state] ?? c.state}`}
     >
       <div className="status">
         <span className={`pill b-${b}`}>{STATE_LABEL[c.state] ?? c.state}</span>
         <span className="timer">{nextStep(c, now) || `${mmss(now - tsMs(c.createdAt))} since alert`}</span>
       </div>
       <div className="main">
-        <div className="name">{h?.name ?? 'Unknown household'}{h?.real && <span className="realtag">team phone</span>}</div>
+        <div className="name">{h ? maskPhone(h.name) : 'Unknown household'}{h?.real && <span className="realtag">team phone</span>}</div>
         <div className="text">
-          {req ? rowReason(req) : h ? `${h.address}, ${h.city}${h.age ? ` · age ${h.age}` : ''}` : ''}
+          {req ? rowReason(req) : h ? `${h.real ? maskPhone(h.handle) : h.address}, ${h.city}${h.age ? ` · age ${h.age}` : ''}` : ''}
         </div>
       </div>
       <span className="score">{req ? <Level tier={req.tier} /> : b === 'urgent' ? <Level tier="critical" /> : null}</span>
@@ -305,12 +306,12 @@ function CheckinDetail({ c, h, req, now, mine, onClaim, onRelease, onResolve }: 
     <aside className="card detail gdetail" aria-label="Household details">
       <div className="ghead">
         <div className="gheadrow">
-          <h2>{h?.name ?? 'Unknown household'}</h2>
+          <h2>{h ? maskPhone(h.name) : 'Unknown household'}</h2>
           <button className="btn" aria-expanded={chatOpen} onClick={() => setChatOpen((v) => !v)}>
             {chatOpen ? 'Hide chat' : 'Chat history'}
           </button>
         </div>
-        {h && <div className="gmeta">{h.age ? `${h.age} · ` : ''}{h.address}, {h.city}</div>}
+        {h && <div className="gmeta">{h.age ? `${h.age} · ` : ''}{h.real ? maskPhone(h.handle) : h.address}, {h.city}</div>}
       </div>
 
       {chatOpen && (

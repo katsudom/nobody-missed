@@ -8,7 +8,7 @@ import HouseholdRow from './module_bindings/household_table';
 import {
   byLevel, Highlighted, Level, levelOf, mmss, parseQuotes, parseReasons, tsMs, useNow, useRun, useToast,
 } from './lib';
-import { personFor } from './policyholders';
+import { maskPhone, personFor } from './policyholders';
 
 type Request = Infer<typeof RequestRow>;
 type Household = Infer<typeof HouseholdRow>;
@@ -334,7 +334,7 @@ function Detail({ r, household, now, mine, claimer, onClaim, onRelease, onResolv
         <div className="tperson">
           <h2>{person.name}</h2>
           <div className="meta">
-            {[person.age ? String(person.age) : '', person.address ?? r.victimHandle, person.policy ? `${person.policy} policy` : ''].filter(Boolean).join(' · ')}
+            {[person.age ? String(person.age) : '', person.address ?? maskPhone(r.victimHandle), person.policy ? `${person.policy} policy` : ''].filter(Boolean).join(' · ')}
           </div>
         </div>
 
