@@ -251,3 +251,11 @@ a.btn { text-decoration: none; display: inline-block; }
 .tbtn.main { flex: 2; border: 0; background: #f59e0b; color: #1a1000; font-weight: 700; }
 .t-red .tbtn.main { background: #f04452; color: #fff; }
 .tbtn:focus-visible { outline: 3px solid #8fb0ff; outline-offset: 2px; }
+
+/* Dev tools: Real phones / Fake data switch, and the header tag that shows which one is on */
+.devmode { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+.devmode__opt { font: inherit; font-size: 14px; font-weight: 700; padding: 7px 10px; border-radius: 7px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.devmode__opt.is-on { background: #2a2a2e; color: var(--text); }
+.devmode__opt:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.modetag { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; white-space: nowrap; }
+.modetag.is-real { color: var(--green); border-color: #1f5c40; }

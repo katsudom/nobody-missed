@@ -2,6 +2,8 @@
 import { schema, table, t, SenderError, type InferSchema, type ReducerCtx } from 'spacetimedb/server';
 import { ScheduleAt, Timestamp } from 'spacetimedb';
 import {
+  STORM_FAKE_MAX,
+  STORM_AUTO_SEED,
   CHECKIN_TEXT,
   OPEN_UNCLAIMED,
   decideTick,
@@ -656,6 +658,10 @@ function tickCheckins(ctx: Ctx) {
 /** Admin: n fake policyholders across the cities. They already joined storm alerts. */
 export const seedHouseholds = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
   requireAdmin(ctx, 'Seed households');
+  seedFake(ctx, n);
+});
+
+function seedFake(ctx: Ctx, n: number) {
   const count = Math.min(n, 5000);
   const start = Number(ctx.db.household.count());
   for (let i = 0; i < count; i++) {
@@ -673,7 +679,7 @@ export const seedHouseholds = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) =
       real: false,
     });
   }
-});
+}
 
 /** Admin (or the bridge, once it is an admin): a real phone that joined storm alerts. Same handle updates it. */
 export const enrollHousehold = spacetimedb.reducer(
@@ -734,8 +740,8 @@ export const startStorm = spacetimedb.reducer((ctx) => {
   const old = activeStorm(ctx);
   if (old) closeStorm(ctx, old.id);
 
+  if ([...ctx.db.household.iter()].filter((h) => !h.real).length < STORM_FAKE_MAX) seedFake(ctx, STORM_AUTO_SEED);
   const all = [...ctx.db.household.iter()];
-  if (all.length === 0) throw new SenderError('no households yet: seed some first');
   const cities = [...new Set(all.map((h) => h.city))];
   const hit = new Set<string>();
   const real = all.filter((h) => h.real);
@@ -744,9 +750,17 @@ export const startStorm = spacetimedb.reducer((ctx) => {
   while (hit.size < want) hit.add(pick(ctx, cities));
   const s = ctx.db.storm.insert({ id: 0n, cities: [...hit].join(', '), startedAt: ctx.timestamp, active: true });
 
+  // Every real phone in the hit cities, plus at most STORM_FAKE_MAX fake households (random ones).
+  const inZone = all.filter((h) => hit.has(h.city));
+  const fakes = inZone.filter((h) => !h.real);
+  for (let i = fakes.length - 1; i > 0; i--) {
+    const j = ctx.random.integerInRange(0, i);
+    [fakes[i], fakes[j]] = [fakes[j], fakes[i]];
+  }
+  const alerted = [...inZone.filter((h) => h.real), ...fakes.slice(0, STORM_FAKE_MAX)];
+
   const t0 = now(ctx);
-  for (const h of all) {
-    if (!hit.has(h.city)) continue;
+  for (const h of alerted) {
     let simFate = '';
     let replyIn = 0n;
     if (!h.real) {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import { useRun, useToast } from './lib';
+import { setMode, useMode } from './mode';
 
 // Small floating dev panel (bottom-right). Only admins see it; the server also refuses
 // these actions from anyone who isn't an admin.
@@ -18,6 +19,7 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
   const [sureClear, setSureClear] = useState(false);
+  const mode = useMode();
 
   const me = identity?.toHexString() ?? '';
   const isAdmin = !!me && admins.some((a) => a.identityHex === me);
@@ -41,16 +43,27 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
         <strong>Dev tools</strong>
         <button className="devx" onClick={() => setOpen(false)} aria-label="Close dev tools">×</button>
       </div>
+      <div className="devmode" role="radiogroup" aria-label="What the boards show">
+        <button role="radio" aria-checked={mode === 'real'} className={`devmode__opt${mode === 'real' ? ' is-on' : ''}`} onClick={() => setMode('real')}>
+          Real phones
+        </button>
+        <button role="radio" aria-checked={mode === 'all'} className={`devmode__opt${mode === 'all' ? ' is-on' : ''}`} onClick={() => setMode('all')}>
+          Fake data
+        </button>
+      </div>
+      <p className="meta">
+        {mode === 'real' ? "Showing only teammates' phones. This browser only." : 'Showing real phones plus fake households. This browser only.'}
+      </p>
       {isAdmin ? (
         <>
           <p className="meta">Shared database: affects everyone.</p>
-          <button className="btn" onClick={() => run((c) => c.reducers.seedHouseholds({ n: 1000 })).then(ok('Added 1,000 households'))}>
-            Seed 1,000 households
+          <button className="btn" onClick={() => run((c) => c.reducers.seedHouseholds({ n: 100 })).then(ok('Added 100 fake households'))}>
+            Seed 100 fake households
           </button>
           {stormOn ? (
             <button className="btn danger" onClick={() => run((c) => c.reducers.endStorm({})).then(ok('Storm ended'))}>End storm</button>
           ) : (
-            <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started: alerts sent'))}>Start storm</button>
+            <button className="btn primary" onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started: alerts sent (up to 20 fake households + team phones)'))}>Start storm</button>
           )}
           <p className="meta">Add a team phone (already joined storm alerts):</p>
           <input className="devinput" placeholder="Name" value={phoneName} onChange={(e) => setPhoneName(e.target.value)} />

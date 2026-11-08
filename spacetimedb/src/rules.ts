@@ -180,6 +180,10 @@ export const CHECKIN_TEXT = 'Still need help? Reply 1 yes, 2 no.';
 
 export const STORM_TEXT =
   'Storm alert from State Farm. Reply 1 if you are safe. Reply 2 if you need help.';
+/** Fake households alerted per storm (real team phones in the hit cities are always alerted too). */
+export const STORM_FAKE_MAX = 20;
+/** If a storm starts with too few fake households, seed this many first. */
+export const STORM_AUTO_SEED = 100;
 export const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if you need help.';
 
 /** Re-text if no reply to the first alert. */
