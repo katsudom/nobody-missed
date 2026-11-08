@@ -60,10 +60,16 @@ export function pollInbound(cursorFile: string, onMessage: (m: Inbound) => Promi
           if (seen.has(m.id)) continue;
           const text = m.content?.type === 'text' ? String(m.content.text ?? '').trim() : '';
           const handle = m.sentBy?.handle;
-          const agentId = m.receivedBy?.id;
+          // receivedBy is optional in Photon's schema: fall back to addressedTo, then the other person in the space.
+          const agentId: string | undefined =
+            m.receivedBy?.id ??
+            m.addressedTo?.id ??
+            (m.space?.participantIds as string[] | undefined)?.find((p) => p !== m.sentBy?.id);
           const isOwn = m.sentBy?.id && m.sentBy.id === agentId;
-          if (text && handle && agentId && !isOwn) {
-            await onMessage({ id: m.id, handle, spaceId: m.space?.id ?? '', agentUserId: agentId, text, createdAt: m.createdAt });
+          if (text && handle && agentId && m.space?.id && !isOwn) {
+            await onMessage({ id: m.id, handle, spaceId: m.space.id, agentUserId: agentId, text, createdAt: m.createdAt });
+          } else if (!isOwn) {
+            console.log(`bridge: skipped Photon message ${m.id} (type=${m.content?.type}, handle=${!!handle}, agent=${!!agentId}, space=${!!m.space?.id})`);
           }
           seen.add(m.id);
           if (m.createdAt > cur.since) cur.since = m.createdAt;
