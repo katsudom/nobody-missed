@@ -14,4 +14,5 @@ export default {
   checkinId: __t.u64(),
   result: __t.string(),
   dtmf: __t.string(),
+  report: __t.string(),
 };

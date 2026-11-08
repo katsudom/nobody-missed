@@ -233,19 +233,6 @@ export const STORM_TEXT =
   'This is an automated emergency check-in. Reply 1 if you are safe. Reply 2 if you need help.';
 /** The one area every storm hits. Every team phone lives here, plus the fake households. */
 export const STORM_AREA = 'Richardson';
-/** Rough bounds of STORM_AREA. Fake households get a made-up point inside it. */
-export const STORM_AREA_BOX = { south: 32.93, north: 33.0, west: -96.77, east: -96.65 };
-
-/** A point in the box, from two random numbers in [0, 1). */
-export function pointInBox(box: typeof STORM_AREA_BOX, r1: number, r2: number) {
-  return { lat: box.south + r1 * (box.north - box.south), lng: box.west + r2 * (box.east - box.west) };
-}
-
-/** The location text from a report's facts, or null if it didn't give a usable one. */
-export function cleanLocation(location: unknown): string | null {
-  if (typeof location !== 'string') return null;
-  return location.trim().slice(0, 200) || null;
-}
 /** Fake households alerted per storm (real team phones in the hit cities are always alerted too). */
 export const STORM_FAKE_MAX = 20;
 /** If a storm starts with too few fake households, seed this many first. */
@@ -255,9 +242,9 @@ export const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe
 export const JOIN_REPLY = "You've successfully joined!";
 
 /** Re-text if no reply to the first alert. */
-export const S1_RETEXT = 25n * UNIT;
+export const S1_RETEXT = 20n * UNIT;
 /** Call if still no reply after the re-text. */
-export const S2_CALL = 20n * UNIT;
+export const S2_CALL = 10n * UNIT;
 /** Urgent if the call was never placed / never answered. */
 export const S3_URGENT = 20n * UNIT;
 
@@ -299,9 +286,10 @@ export function checkinAfterReply(text: string): 'safe' | 'needs_help' {
   return text.trim() === '1' ? 'safe' : 'needs_help';
 }
 
-/** A finished check-in call: pressed 1 or said safe → safe. Help, or no clear answer → urgent. */
-export function checkinAfterCall(result: string, dtmf: string): CheckinState {
+/** A finished check-in call: 1 or safe → safe; help with a spoken report → needs_help; anything else → urgent. */
+export function checkinAfterCall(result: string, dtmf: string, report = ''): CheckinState {
   if (result.toLowerCase() !== 'answered') return 'urgent';
+  if (report.trim()) return 'needs_help';
   return dtmf.trim() === '1' ? 'safe' : 'urgent';
 }
 

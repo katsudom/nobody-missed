@@ -136,7 +136,7 @@ async function handleCall(o: { id: bigint; requestId: bigint; checkinId: bigint;
     await conn.reducers.completeOutbox({ outboxId: o.id, ok: true, externalId: conversationId });
     console.log(`bridge: ${label} calling (${conversationId})`);
     const r = await waitForResult(conversationId);
-    if (storm) await conn.reducers.checkinCallResult({ checkinId: o.checkinId, result: r.result, dtmf: r.dtmf });
+    if (storm) await conn.reducers.checkinCallResult({ checkinId: o.checkinId, result: r.result, dtmf: r.dtmf, report: r.report });
     else await conn.reducers.callResult({ requestId: o.requestId, result: r.result, dtmf: r.dtmf });
     console.log(`bridge: ${label} call ${r.result}${r.dtmf ? ` pressed ${r.dtmf}` : ''} (${r.seconds}s${r.why ? `, ${r.why}` : ''})`);
   } catch (err) {

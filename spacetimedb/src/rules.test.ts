@@ -22,26 +22,7 @@ import {
   UNDO_WINDOW,
   requestStateOnUndo,
   checkinStateOnUndo,
-  STORM_AREA_BOX,
-  pointInBox,
-  cleanLocation,
 } from './rules.ts';
-
-test('fake household points stay inside the storm area', () => {
-  const box = STORM_AREA_BOX;
-  assert.deepEqual(pointInBox(box, 0, 0), { lat: box.south, lng: box.west });
-  const p = pointInBox(box, 0.999, 0.999);
-  assert.ok(p.lat > box.south && p.lat < box.north);
-  assert.ok(p.lng > box.west && p.lng < box.east);
-});
-
-test('only a real location string is stored', () => {
-  assert.equal(cleanLocation('  500 Campbell Rd '), '500 Campbell Rd');
-  assert.equal(cleanLocation('   '), null);
-  assert.equal(cleanLocation(null), null);
-  assert.equal(cleanLocation(42), null);
-  assert.equal(cleanLocation('x'.repeat(500))?.length, 200);
-});
 
 test('undo window is 30 real seconds', () => {
   assert.equal(UNDO_WINDOW, 30_000_000n);
@@ -220,7 +201,9 @@ test('check-in replies and calls', () => {
   assert.equal(checkinAfterReply('2'), 'needs_help');
   assert.equal(checkinAfterReply('water is rising'), 'needs_help');
   assert.equal(checkinAfterCall('answered', '1'), 'safe');
-  assert.equal(checkinAfterCall('answered', '2'), 'needs_help');
+  assert.equal(checkinAfterCall('answered', '2'), 'urgent');
+  assert.equal(checkinAfterCall('answered', '2', 'A tree fell on the roof'), 'needs_help');
+  assert.equal(checkinAfterCall('answered', '2', '  '), 'urgent');
   assert.equal(checkinAfterCall('answered', ''), 'urgent');
   assert.equal(checkinAfterCall('no_answer', ''), 'urgent');
 });

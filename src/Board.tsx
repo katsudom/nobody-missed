@@ -1,6 +1,5 @@
 import { memo, useMemo, useRef, useState } from 'react';
 import DevTools from './DevTools';
-import PageTabs from './PageTabs';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
@@ -175,14 +174,15 @@ export default function Board() {
           <div className="eyebrow">Nobody Missed · Responder board</div>
           <h1>Check-In Command Center</h1>
         </div>
-        <PageTabs current="reports" />
+        <span className="spacer" />
+        <a className="btn" href="#/board">Check-ins</a>
       </header>
 
       <div className="cols">
         <section className="card queue">
           <div className="qhead">
             <div className="qtitle">
-              <h2>Reports</h2>
+              <h2>Ranked queue</h2>
               <span className="qstat">
                 <b>{handled}%</b> claimed or safe · {open.toLocaleString()} open · {critical.toLocaleString()} critical
               </span>

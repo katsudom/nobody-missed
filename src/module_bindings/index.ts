@@ -77,7 +77,6 @@ import SettingRow from "./setting_table";
 import StormRow from "./storm_table";
 import TeammateRow from "./teammate_table";
 import UndoActionRow from "./undo_action_table";
-import VictimLocationRow from "./victim_location_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -234,17 +233,6 @@ const tablesSchema = __schema({
       { name: 'undo_action_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, UndoActionRow),
-  victimLocation: __table({
-    name: 'victim_location',
-    indexes: [
-      { accessor: 'handle', name: 'victim_location_handle_idx_btree', algorithm: 'btree', columns: [
-        'handle',
-      ] },
-    ],
-    constraints: [
-      { name: 'victim_location_handle_key', constraint: 'unique', columns: ['handle'] },
-    ],
-  }, VictimLocationRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */

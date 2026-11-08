@@ -1,6 +1,6 @@
 // Storm check-in board (docs/checkin-plan.md). Display only: the module runs the ladder,
 // the timers and the claims; this page shows them and calls reducers.
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import type { Infer } from 'spacetimedb';
 import { tables } from './module_bindings';
@@ -10,7 +10,6 @@ import StormRowT from './module_bindings/storm_table';
 import RequestRowT from './module_bindings/request_table';
 import { byLevel, Level, levelOf, mmss, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
 import DevTools from './DevTools';
-import PageTabs from './PageTabs';
 import { maskPhone } from './policyholders';
 
 type Checkin = Infer<typeof CheckinRowT>;
@@ -21,8 +20,8 @@ type Request = Infer<typeof RequestRowT>;
 const MAX_ROWS = 200;
 // Mirrors spacetimedb/src/rules.ts (S1_RETEXT, S2_CALL in demo seconds). Display only.
 const NEXT_STEP_MS: Record<string, { ms: number; label: string }> = {
-  texted: { ms: 25_000, label: 'Re-text in' },
-  retexted: { ms: 20_000, label: 'Call in' },
+  texted: { ms: 20_000, label: 'Re-text in' },
+  retexted: { ms: 10_000, label: 'Call in' },
 };
 
 type Bucket = 'urgent' | 'help' | 'waiting' | 'safe' | 'handled';
@@ -35,8 +34,19 @@ const BUCKETS: { key: Bucket; label: string; color: string }[] = [
   { key: 'safe', label: 'Safe', color: 'var(--green)' },
 ];
 
-// Tabs whose counts light up, because someone still has to act on them.
-const NEEDS_ACTION: Bucket[] = ['urgent', 'help', 'waiting'];
+/** Everything a household can be found by. The full phone matches even though the board masks it. */
+const haystack = (h: Household) =>
+  `${h.name} ${h.address} ${h.city} ${h.handle} ${h.handle.replace(/\D/g, '')}`.toLowerCase();
+
+/** Every word has to match somewhere, so "yoon richardson" narrows. Punctuation and case are ignored. */
+function matchesQuery(h: Household | undefined, query: string) {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  if (!h) return false;
+  const hay = haystack(h);
+  const bare = hay.replace(/[^a-z0-9]+/g, '');
+  return terms.every((t) => hay.includes(t) || bare.includes(t.replace(/[^a-z0-9]+/g, '')));
+}
 
 function bucketOf(c: Checkin): Bucket {
   switch (c.state) {
@@ -73,6 +83,8 @@ export default function CheckinBoard() {
   const [requests] = useTable(tables.request);
   const [responders] = useTable(tables.responder);
   const [picked, setTab] = useState<Bucket | 'all' | null>(null); // null = follow the most serious non-empty tab
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<bigint | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
@@ -82,14 +94,15 @@ export default function CheckinBoard() {
   const names = useMemo(() => new Map(responders.map((r) => [r.identity.toHexString(), r.name])), [responders]);
 
   // Only the latest storm's check-ins count.
-  const { mine, counts, rows, tab } = useMemo(() => {
+  const { mine, counts, rows, tab, matched } = useMemo(() => {
     const list = storm
       ? checkins.filter((c) => c.stormId === storm.id)
       : [];
     const k: Record<Bucket, number> = { urgent: 0, help: 0, waiting: 0, safe: 0, handled: 0 };
     for (const c of list) k[bucketOf(c)]++;
     const tab: Bucket | 'all' = picked ?? (['urgent', 'help', 'waiting'] as Bucket[]).find((b) => k[b] > 0) ?? 'all';
-    const shown = tab === 'all' ? [...list] : list.filter((c) => bucketOf(c) === tab);
+    const inTab = tab === 'all' ? [...list] : list.filter((c) => bucketOf(c) === tab);
+    const shown = query.trim() ? inTab.filter((c) => matchesQuery(hh.get(c.householdId), query)) : inTab;
     const order = ['urgent', 'needs_help', 'called', 'retexted', 'texted', 'no_reply', 'claimed', 'closed', 'safe'];
     shown.sort((a, b) => {
       // Team phones stay on top so the audience can follow the real one among the fakes.
@@ -104,12 +117,26 @@ export default function CheckinBoard() {
       return order.indexOf(a.state) - order.indexOf(b.state) ||
         (a.updatedAt.microsSinceUnixEpoch < b.updatedAt.microsSinceUnixEpoch ? -1 : 1);
     });
-    return { mine: list, counts: k, rows: shown.slice(0, MAX_ROWS), tab };
-  }, [checkins, storm, picked, reqs, hh]);
+    return { mine: list, counts: k, rows: shown.slice(0, MAX_ROWS), tab, matched: shown.length };
+  }, [checkins, storm, picked, reqs, hh, query]);
 
   const total = mine.length;
   const pct = total ? Math.round((counts.safe / total) * 100) : 0;
-  const shownTotal = tab === 'all' ? total : counts[tab];
+  const shownTotal = query.trim() ? matched : tab === 'all' ? total : counts[tab];
+
+  // "/" jumps into the search box, the way it does on a list anywhere else. Never while typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const selectedC = (selected !== null ? mine.find((c) => c.id === selected) : undefined) ?? rows[0];
   const meHex = identity?.toHexString();
@@ -129,7 +156,6 @@ export default function CheckinBoard() {
           <div className="eyebrow">Nobody Missed · Emergency check-ins</div>
           <h1>Check-In Command Center</h1>
         </div>
-        <PageTabs current="board" />
         <span className="spacer" />
         <span className={`live ${isActive ? 'on' : ''}`} role="status">{isActive ? 'Live' : 'Reconnecting…'}</span>
         <StormChip storm={storm} now={now} inZone={total} />
@@ -138,21 +164,40 @@ export default function CheckinBoard() {
       <div className="cols">
         <section className="card queue">
           <div className="qhead">
-            <h2>Households in the impact area</h2>
+            <div className="qtitle">
+              <h2>Households in the impact area</h2>
+              <span className="spacer" />
+              <div className="searchbar">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+                </svg>
+                <input
+                  ref={searchRef}
+                  type="search"
+                  value={query}
+                  placeholder="Search name, address, phone, city"
+                  aria-label="Search households by name, address, phone or city"
+                  autoComplete="off"
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Escape' && query) { e.preventDefault(); setQuery(''); } }}
+                />
+                {query
+                  ? <button className="searchclear" aria-label="Clear search" onClick={() => { setQuery(''); searchRef.current?.focus(); }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                    </button>
+                  : <span className="searchkey" aria-hidden="true">/</span>}
+              </div>
+            </div>
             <div className="qbar">
-            <div className="tabs ptabs" role="tablist" aria-label="Filter households">
+            <div className="tabs" role="tablist" aria-label="Filter households">
               <button role="tab" aria-selected={tab === 'all'} className={`tab ${tab === 'all' ? 'on' : ''}`} onClick={() => setTab('all')}>
-                All <span className="ptab-count">{total.toLocaleString()}</span>
+                All <span>{total.toLocaleString()}</span>
               </button>
-              {BUCKETS.map((b) => {
-                const empty = counts[b.key] === 0;
-                const hot = !empty && NEEDS_ACTION.includes(b.key);
-                return (
-                  <button key={b.key} role="tab" aria-selected={tab === b.key} className={`tab ${tab === b.key ? 'on' : ''}`} style={{ '--tc': b.color } as React.CSSProperties} onClick={() => setTab(b.key)}>
-                    <b className="dot" style={{ background: b.color }} />{b.label} <span className={`ptab-count ${hot ? 'hot' : ''}`}>{counts[b.key].toLocaleString()}</span>
-                  </button>
-                );
-              })}
+              {BUCKETS.map((b) => (
+                <button key={b.key} role="tab" aria-selected={tab === b.key} className={`tab ${tab === b.key ? 'on' : ''}`} onClick={() => setTab(b.key)}>
+                  <b className="dot" style={{ background: b.color }} />{b.label} <span>{counts[b.key].toLocaleString()}</span>
+                </button>
+              ))}
             </div>
             <span className="qstat">
               <b>{pct}%</b> checked in safe
@@ -167,7 +212,14 @@ export default function CheckinBoard() {
                 <span>{households.length.toLocaleString()} households have joined storm alerts. An admin starts a storm from the Dev panel (bottom right).</span>
               </div>
             )}
-            {ready && storm && rows.length === 0 && <p className="empty">Nobody in this group.</p>}
+            {ready && storm && rows.length === 0 && (
+              query.trim()
+                ? <div className="emptybox">
+                    <b>No household matches “{query.trim()}”</b>
+                    <span>Search a name, a street, a city, or any part of a phone number.</span>
+                  </div>
+                : <p className="empty">Nobody in this group.</p>
+            )}
             {rows.map((c) => (
               <CheckinRow
                 key={c.id.toString()}

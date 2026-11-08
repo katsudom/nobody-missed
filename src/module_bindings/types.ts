@@ -140,14 +140,3 @@ export const UndoAction = __t.object("UndoAction", {
 });
 export type UndoAction = __Infer<typeof UndoAction>;
 
-export const VictimLocation = __t.object("VictimLocation", {
-  handle: __t.string(),
-  address: __t.string(),
-  city: __t.string(),
-  lat: __t.option(__t.f64()),
-  lng: __t.option(__t.f64()),
-  source: __t.string(),
-  updatedAt: __t.timestamp(),
-});
-export type VictimLocation = __Infer<typeof VictimLocation>;
-

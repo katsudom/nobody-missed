@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSpacetimeDB } from 'spacetimedb/react';
 import Board from './Board';
 import CheckinBoard from './CheckinBoard';
@@ -8,15 +8,13 @@ import UndoTray from './UndoTray';
 import { ToastProvider, useRun } from './lib';
 import './styles.css';
 
-const DisastersMap = lazy(() => import('./DisastersMap')); // Mapbox is large: only load it on this page
-
 const NAME_KEY = 'nobody-missed/responder-name';
 
 function readName() {
   try { return localStorage.getItem(NAME_KEY) ?? ''; } catch { return ''; }
 }
 
-// Hash routing (#/board = storm check-ins, #/reports, #/disasters, #/victim-sim) so it works on GitHub Pages with no server rewrites.
+// Hash routing (#/board = storm check-ins, #/reports, #/victim-sim) so it works on GitHub Pages with no server rewrites.
 function useRoute() {
   const get = () => (window.location.hash.replace(/^#\/?/, '') || 'board');
   const [route, setRoute] = useState(get);
@@ -72,9 +70,7 @@ function Shell() {
   return (
     <>
       {!isActive && <div className="conn">Connecting…</div>}
-      {route === 'reports' ? <Board />
-        : route === 'disasters' ? <Suspense fallback={<p className="empty">Loading map…</p>}><DisastersMap /></Suspense>
-        : <CheckinBoard />}
+      {route === 'reports' ? <Board /> : <CheckinBoard />}
       <UndoTray />
       {!name && isActive && <NamePrompt onDone={setName} />}
     </>
