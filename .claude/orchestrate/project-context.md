@@ -24,7 +24,7 @@ Source of truth: `SPEC.md`. Build order and checkpoints: `docs/HANDOFF-PROMPT.md
 - Ask Dominic before changing the state machine, scoring rules, or flow. No features outside SPEC.md.
 - Never put secrets in chat, code, or commits. Keys live only in `bridge/.env` (gitignored). A pre-commit hook blocks keys.
 - After a module change: regenerate `src/module_bindings` (`spacetime generate --lang typescript --out-dir src/module_bindings --module-path spacetimedb -y`) and commit them.
-- Commit messages end with the Co-Authored-By line from the current system reminder.
+- Commits go under katsudom only: NO Co-Authored-By trailer, no "Generated with Claude Code" line (Dominic, 2026-11-07).
 
 ## Only the orchestrator, and only when the owner says so
 - Maincloud publish, reset_demo, make_admin, merging teammate PRs, anything that sends a real text or places a real call.
