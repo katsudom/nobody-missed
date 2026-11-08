@@ -3,7 +3,8 @@
 Source of truth: `SPEC.md`. Build order and checkpoints: `docs/HANDOFF-PROMPT.md`.
 
 ## Vault
-- No separate vault. `Status` lives at `.claude/orchestrate/status.md` (under 60 lines).
+- Vault at `vault/` (start at `vault/Home.md`). The repo is public: no phone numbers, keys or personal details in it.
+- Mapping: `Status` stays at `.claude/orchestrate/status.md` (under 60 lines); no `Areas/`, `Scopes/` or `Runs/` yet.
 
 ## Source control
 - Base branch: `main`. A push to `main` deploys the board to Vercel (nobody-missed.vercel.app) in ~1 min.
