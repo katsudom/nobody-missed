@@ -10,5 +10,6 @@ spacetime.local.json
 *.tsbuildinfo
 !.env.development
 !.env.production
+!.env.sandbox
 
 .photon-cursor.json

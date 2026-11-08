@@ -8,7 +8,12 @@ const KEY = 'nobody-missed/board-mode';
 const EVENT = 'nobody-missed:mode';
 
 function read(): Mode {
-  try { return localStorage.getItem(KEY) === 'all' ? 'all' : 'real'; } catch { return 'real'; }
+  // The local sandbox has no real phones, so it shows fake data unless this browser picked otherwise.
+  const fallback: Mode = import.meta.env.MODE === 'sandbox' ? 'all' : 'real';
+  try {
+    const m = localStorage.getItem(KEY);
+    return m === 'all' || m === 'real' ? m : fallback;
+  } catch { return fallback; }
 }
 
 export function setMode(m: Mode) {
