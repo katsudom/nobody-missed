@@ -187,7 +187,7 @@ export default function Board() {
         <section className="card queue">
           <div className="qhead">
             <div className="qtitle">
-              <h2>Ranked queue</h2>
+              <h2>Reports</h2>
               <span className="qstat">
                 <b>{handled}%</b> claimed or safe · {open.toLocaleString()} open · {critical.toLocaleString()} critical
               </span>

@@ -154,7 +154,7 @@ export default function CheckinBoard() {
                 const hot = !empty && NEEDS_ACTION.includes(b.key);
                 return (
                   <button key={b.key} role="tab" aria-selected={tab === b.key} className={`tab ${tab === b.key ? 'on' : ''} ${empty ? 'z' : ''}`} style={{ '--tc': b.color } as React.CSSProperties} onClick={() => setTab(b.key)}>
-                    <b className="dot" style={{ background: empty ? 'var(--line)' : b.color }} />{b.label} <span className={`ptab-count ${hot ? 'hot' : ''}`}>{counts[b.key].toLocaleString()}</span>
+                    <b className="dot" style={{ background: b.color }} />{b.label} <span className={`ptab-count ${hot ? 'hot' : ''}`}>{counts[b.key].toLocaleString()}</span>
                   </button>
                 );
               })}
