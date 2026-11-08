@@ -359,6 +359,10 @@ a.btn { text-decoration: none; display: inline-block; }
 
 /* ---- page tabs + disasters map ---- */
 a.tab { text-decoration: none; }
+/* Page tabs stay put between pages: the title takes the same width on all of them (13em fits the longest),
+   and the reserved scrollbar space stops a page that scrolls from shifting the centered board. */
+html { scrollbar-gutter: stable; }
+.head h1 { min-width: 13em; }
 .pagetabs { align-self: center; margin-left: 12px; }
 .dzbar { margin-bottom: 12px; }
 .dzsearch { position: relative; flex: 1 1 260px; max-width: 420px; }
@@ -393,7 +397,8 @@ a.tab { text-decoration: none; }
 .mapboxgl-ctrl-attrib.mapboxgl-compact, .mapboxgl-ctrl-attrib { background: #150e33cc; }
 .mapboxgl-ctrl-attrib a { color: var(--muted); }
 @media (max-width: 600px) {
-  .board:has(.dzframe) { padding: 16px; }
-  .pagetabs { margin-left: 0; }
+  .board { padding: 16px; }
+  .head h1 { min-width: 0; }
+  .pagetabs { margin-left: 0; flex-basis: 100%; }
   .dzsearch { max-width: none; flex-basis: 100%; }
 }

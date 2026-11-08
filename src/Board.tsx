@@ -178,7 +178,6 @@ export default function Board() {
           <div className="eyebrow">Nobody Missed · Responder board</div>
           <h1>Check-In Command Center</h1>
         </div>
-        <span className="spacer" />
         <PageTabs current="reports" />
       </header>
 
