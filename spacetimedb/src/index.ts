@@ -983,8 +983,8 @@ export const startStorm = spacetimedb.reducer((ctx) => {
     if (!h.real) {
       const roll = ctx.random();
       simFate = roll < 0.6 ? 'safe' : roll < 0.7 ? 'help' : 'late';
-      // late: after the re-text (25 s) and before urgent (65 s), so they visibly come back.
-      replyIn = BigInt(simFate === 'late' ? ctx.random.integerInRange(30, 58) : ctx.random.integerInRange(2, 14)) * DEMO_SECOND;
+      // late: after the re-text (20 s) and before urgent (50 s), so they visibly come back.
+      replyIn = BigInt(simFate === 'late' ? ctx.random.integerInRange(24, 46) : ctx.random.integerInRange(2, 14)) * DEMO_SECOND;
     }
     const c = ctx.db.checkin.insert({
       id: 0n,
