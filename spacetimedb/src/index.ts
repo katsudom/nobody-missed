@@ -702,8 +702,8 @@ function closeStorm(ctx: Ctx, stormId: bigint) {
   const row = ctx.db.storm.id.find(stormId);
   if (row) ctx.db.storm.id.update({ ...row, active: false });
   for (const c of [...ctx.db.checkin.stormId.filter(stormId)]) {
+    cancelCheckinOutbox(ctx, c.id); // nothing from an ended storm goes out later
     if (isAwaiting(c.state)) {
-      cancelCheckinOutbox(ctx, c.id);
       setCheckin(ctx, c, 'closed');
       ctx.db.checkin.id.update(c);
     }
