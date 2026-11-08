@@ -51,7 +51,6 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [tab, setTabState] = useState<Tab>(readTab);
-  const [sureClear, setSureClear] = useState(false);
   const [sureResetPhones, setSureResetPhones] = useState(false);
   const [households] = useTable(tables.household);
   const mode = useMode();
@@ -80,7 +79,6 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
   const ok = (msg: string) => (done: boolean) => { if (done) toast(msg, true); };
   const setTab = (t: Tab) => {
     setTabState(t);
-    setSureClear(false);
     setSureResetPhones(false);
     try { localStorage.setItem(TAB_KEY, t); } catch { /* storage blocked */ }
   };
@@ -183,17 +181,12 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
             )}
 
             {shownTab === 'reset' && isAdmin && (
-              <Section label="Danger zone" note="These change the shared database for everyone.">
-                <Action tone="danger" title="Reset demo" hint="Back to a clean starting state" onClick={onAskReset} />
+              <Section label="Danger zone" note={sandbox ? 'Only this laptop: nobody else sees it.' : 'These change the shared database for everyone.'}>
+                <Action tone="danger" title="Reset demo" hint="Clears storms, check-ins and reports. Keeps households" onClick={onAskReset} />
                 {sureResetPhones ? (
                   <Action tone="confirm" title="Really forget all team phones?" hint="Everyone must text JOIN again" onClick={() => { setSureResetPhones(false); void run((c) => c.reducers.resetTeamPhones({})).then(ok('Team phones reset: text JOIN again')); }} />
                 ) : (
                   <Action tone="danger" title="Reset team phones" hint="Asks again before it runs" onClick={() => setSureResetPhones(true)} />
-                )}
-                {sureClear ? (
-                  <Action tone="confirm" title="Really delete all households?" hint="Can't be undone" onClick={() => { setSureClear(false); void run((c) => c.reducers.clearHouseholds({})).then(ok('Households cleared')); }} />
-                ) : (
-                  <Action tone="danger" title="Clear households" hint="Asks again before it runs" onClick={() => setSureClear(true)} />
                 )}
               </Section>
             )}

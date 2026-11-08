@@ -736,12 +736,6 @@ function tickCheckins(ctx: Ctx) {
   }
 }
 
-/** Admin: n fake policyholders across the cities. They already joined storm alerts. */
-export const seedHouseholds = spacetimedb.reducer({ n: t.u32() }, (ctx, { n }) => {
-  requireTeammate(ctx, 'Seed households');
-  seedFake(ctx, n);
-});
-
 function seedFake(ctx: Ctx, n: number) {
   const count = Math.min(n, 5000);
   const start = Number(ctx.db.household.count());
@@ -813,13 +807,6 @@ export const resetTeamPhones = spacetimedb.reducer((ctx) => {
   }
 });
 
-/** Admin: remove every household, storm and check-in. */
-export const clearHouseholds = spacetimedb.reducer((ctx) => {
-  requireAdmin(ctx, 'Clear households');
-  for (const c of [...ctx.db.checkin.iter()]) ctx.db.checkin.id.delete(c.id);
-  for (const s of [...ctx.db.storm.iter()]) ctx.db.storm.id.delete(s.id);
-  for (const h of [...ctx.db.household.iter()]) ctx.db.household.id.delete(h.id);
-});
 
 function closeStorm(ctx: Ctx, stormId: bigint) {
   const row = ctx.db.storm.id.find(stormId);

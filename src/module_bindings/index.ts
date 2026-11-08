@@ -39,7 +39,6 @@ import CallResultReducer from "./call_result_reducer";
 import CheckinCallResultReducer from "./checkin_call_result_reducer";
 import ClaimCheckinReducer from "./claim_checkin_reducer";
 import ClaimRequestReducer from "./claim_request_reducer";
-import ClearHouseholdsReducer from "./clear_households_reducer";
 import CompleteOutboxReducer from "./complete_outbox_reducer";
 import EndStormReducer from "./end_storm_reducer";
 import EnrollHouseholdReducer from "./enroll_household_reducer";
@@ -55,7 +54,6 @@ import ResetDemoReducer from "./reset_demo_reducer";
 import ResetTeamPhonesReducer from "./reset_team_phones_reducer";
 import ResolveCheckinReducer from "./resolve_checkin_reducer";
 import ResolveRequestReducer from "./resolve_request_reducer";
-import SeedHouseholdsReducer from "./seed_households_reducer";
 import SetCallsReducer from "./set_calls_reducer";
 import SetFactsReducer from "./set_facts_reducer";
 import SimulateReplyReducer from "./simulate_reply_reducer";
@@ -228,7 +226,6 @@ const reducersSchema = __reducers(
   __reducerSchema("checkin_call_result", CheckinCallResultReducer),
   __reducerSchema("claim_checkin", ClaimCheckinReducer),
   __reducerSchema("claim_request", ClaimRequestReducer),
-  __reducerSchema("clear_households", ClearHouseholdsReducer),
   __reducerSchema("complete_outbox", CompleteOutboxReducer),
   __reducerSchema("end_storm", EndStormReducer),
   __reducerSchema("enroll_household", EnrollHouseholdReducer),
@@ -244,7 +241,6 @@ const reducersSchema = __reducers(
   __reducerSchema("reset_team_phones", ResetTeamPhonesReducer),
   __reducerSchema("resolve_checkin", ResolveCheckinReducer),
   __reducerSchema("resolve_request", ResolveRequestReducer),
-  __reducerSchema("seed_households", SeedHouseholdsReducer),
   __reducerSchema("set_calls", SetCallsReducer),
   __reducerSchema("set_facts", SetFactsReducer),
   __reducerSchema("simulate_reply", SimulateReplyReducer),
