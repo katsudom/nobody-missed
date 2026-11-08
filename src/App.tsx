@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSpacetimeDB } from 'spacetimedb/react';
 import Board from './Board';
+import CheckinBoard from './CheckinBoard';
 import VictimSim from './VictimSim';
 import { ToastProvider, useRun } from './lib';
 import './styles.css';
@@ -11,7 +12,7 @@ function readName() {
   try { return localStorage.getItem(NAME_KEY) ?? ''; } catch { return ''; }
 }
 
-// Hash routing (#/board, #/victim-sim) so it works on GitHub Pages with no server rewrites.
+// Hash routing (#/board = storm check-ins, #/reports, #/victim-sim) so it works on GitHub Pages with no server rewrites.
 function useRoute() {
   const get = () => (window.location.hash.replace(/^#\/?/, '') || 'board');
   const [route, setRoute] = useState(get);
@@ -67,7 +68,7 @@ function Shell() {
   return (
     <>
       {!isActive && <div className="conn">Connecting…</div>}
-      <Board />
+      {route === 'reports' ? <Board /> : <CheckinBoard />}
       {!name && isActive && <NamePrompt onDone={setName} />}
     </>
   );

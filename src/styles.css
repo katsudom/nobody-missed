@@ -159,3 +159,23 @@ summary { cursor: pointer; color: var(--muted); font-size: 13px; text-transform:
 .devx { font: inherit; font-size: 20px; line-height: 1; padding: 2px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .devx:hover { color: var(--text); background: #2a2a2e; }
 .devid { font-size: 11px; word-break: break-all; user-select: all; padding: 8px; border-radius: 8px; background: #0d0d0f; border: 1px solid var(--line); color: var(--text); }
+
+/* ---- storm check-in board ---- */
+.stormchip { font-family: ui-monospace, Consolas, monospace; font-size: 13px; padding: 6px 12px; border-radius: 999px; }
+.stormchip.on { background: #3a1217; color: #ff8a95; border: 1px solid #7f2530; }
+a.btn { text-decoration: none; display: inline-block; }
+.crow { grid-template-columns: 150px minmax(0, 1fr) 44px auto; }
+.b-urgent { background: var(--red); color: #fff; }
+.b-help { background: #3a2a0c; color: var(--amber); }
+.b-waiting { background: #26262a; color: var(--grey); }
+.b-safe { background: #123524; color: var(--green); }
+.b-handled { background: #13234a; color: #8fb0ff; }
+.realtag { margin-left: 10px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; background: #13234a; color: #8fb0ff; vertical-align: middle; }
+.ladder2 { display: flex; gap: 6px; list-style: none; padding: 0; margin: 16px 0 6px; }
+.ladder2 li { flex: 1; text-align: center; font-size: 13px; padding: 6px 4px; border-radius: 8px; background: #1d1d20; color: var(--muted); border: 1px solid var(--line); }
+.ladder2 li.done { background: #2a2a2e; color: var(--text); border-color: #4a4a52; }
+.ladder2 li.bad { background: var(--red); color: #fff; border-color: var(--red); }
+.devinput { font-size: 15px; padding: 6px 10px; }
+.checkinsim { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
+.checkinsim .simrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.checkinsim .simrow .who { flex: 1; }

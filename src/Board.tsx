@@ -186,6 +186,7 @@ export default function Board() {
         </div>
         <span className="spacer" />
         <span className="simtag">Simulated storm · synthetic policyholders</span>
+        <a className="btn" href="#/board">Check-ins</a>
       </header>
 
       <section className="card summary">
