@@ -1,6 +1,5 @@
 import { memo, useMemo, useRef, useState } from 'react';
 import DevTools from './DevTools';
-import { isRealReport, useMode } from './mode';
 import { useSpacetimeDB, useTable } from 'spacetimedb/react';
 import { tables } from './module_bindings';
 import type { Infer } from 'spacetimedb';
@@ -100,8 +99,7 @@ export default function Board() {
   const toast = useToast();
   const now = useNow();
   const [allRequests, ready] = useTable(tables.request);
-  const mode = useMode();
-  const requests = useMemo(() => (mode === 'real' ? allRequests.filter(isRealReport) : allRequests), [allRequests, mode]);
+  const requests = allRequests;
   const [responders] = useTable(tables.responder);
   const [households] = useTable(tables.household);
   const byHandle = useMemo(() => new Map(households.map((h) => [h.handle, h])), [households]);
@@ -177,7 +175,6 @@ export default function Board() {
           <h1>Check-In Command Center</h1>
         </div>
         <span className="spacer" />
-        <span className={`modetag${mode === 'real' ? ' is-real' : ''}`}>{mode === 'real' ? 'Real phones only' : 'Includes fake data'}</span>
         <a className="btn" href="#/board">Check-ins</a>
       </header>
 

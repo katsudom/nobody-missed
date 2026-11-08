@@ -10,7 +10,6 @@ import StormRowT from './module_bindings/storm_table';
 import RequestRowT from './module_bindings/request_table';
 import { byLevel, Level, levelOf, mmss, parseReasons, tsMs, useNow, useRun, useToast } from './lib';
 import DevTools from './DevTools';
-import { useMode } from './mode';
 
 type Checkin = Infer<typeof CheckinRowT>;
 type Household = Infer<typeof HouseholdRowT>;
@@ -72,7 +71,6 @@ export default function CheckinBoard() {
   const [picked, setTab] = useState<Bucket | 'all' | null>(null); // null = follow the most serious non-empty tab
   const [selected, setSelected] = useState<bigint | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
-  const mode = useMode();
 
   const storm = storms.find((s) => s.active) ?? [...storms].sort((a, b) => (a.id < b.id ? 1 : -1))[0];
   const hh = useMemo(() => new Map(households.map((h) => [h.id, h])), [households]);
@@ -82,7 +80,7 @@ export default function CheckinBoard() {
   // Only the latest storm's check-ins count.
   const { mine, counts, rows, tab } = useMemo(() => {
     const list = storm
-      ? checkins.filter((c) => c.stormId === storm.id && (mode === 'all' || hh.get(c.householdId)?.real))
+      ? checkins.filter((c) => c.stormId === storm.id)
       : [];
     const k: Record<Bucket, number> = { urgent: 0, help: 0, waiting: 0, safe: 0, handled: 0 };
     for (const c of list) k[bucketOf(c)]++;
@@ -103,7 +101,7 @@ export default function CheckinBoard() {
         (a.updatedAt.microsSinceUnixEpoch < b.updatedAt.microsSinceUnixEpoch ? -1 : 1);
     });
     return { mine: list, counts: k, rows: shown.slice(0, MAX_ROWS), tab };
-  }, [checkins, storm, picked, reqs, mode, hh]);
+  }, [checkins, storm, picked, reqs, hh]);
 
   const total = mine.length;
   const pct = total ? Math.round((counts.safe / total) * 100) : 0;
@@ -128,7 +126,6 @@ export default function CheckinBoard() {
           <h1>Check-In Command Center</h1>
         </div>
         <span className="spacer" />
-        <span className={`modetag${mode === 'real' ? ' is-real' : ''}`}>{mode === 'real' ? 'Real phones only' : 'Includes fake data'}</span>
         <span className={`live ${isActive ? 'on' : ''}`} role="status">{isActive ? 'Live' : 'Reconnecting…'}</span>
         <StormChip storm={storm} now={now} inZone={total} />
       </header>
