@@ -381,10 +381,10 @@ const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if 
 
 function Check({ on = false }: { on?: boolean }) {
   return on
-    ? <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#30d158" strokeWidth="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
+    ? <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.6" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
     : <span className="gmark empty" aria-hidden="true" />;
 }
 
 function Cross() {
-  return <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff453a" strokeWidth="2.4" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>;
+  return <svg className="gmark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2.4" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>;
 }
