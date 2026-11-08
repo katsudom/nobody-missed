@@ -5,6 +5,8 @@ import mapboxgl from 'mapbox-gl';
 import type { Feature, MultiPolygon, Polygon, Position } from 'geojson';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import PageTabs from './PageTabs';
+import WeatherWarnings from './WeatherWarnings';
+import { useWeatherAlerts } from './weather';
 
 const TOKEN = (import.meta.env.VITE_MAPBOX_TOKEN ?? '').trim();
 const ALERTS_URL = 'https://api.weather.gov/alerts/active?status=actual&message_type=alert&severity=Extreme,Severe';
@@ -252,6 +254,7 @@ function PlaceSearch({ onPick }: { onPick: (p: Place) => void }) {
 export default function DisastersMap() {
   const { alerts: feed, status, updatedAt, retry } = useAlerts();
   const { alerts, loadingZones } = useZoneShapes(feed);
+  const weather = useWeatherAlerts();
   const [category, setCategory] = useState<Category>('all');
   const [selected, setSelected] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -360,6 +363,8 @@ export default function DisastersMap() {
           National Weather Service{updatedAt ? ` · updated ${updatedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
         </span>
       </header>
+
+      <WeatherWarnings weather={weather} />
 
       <div className="cols">
         <section className="card" aria-label="Disaster map">
