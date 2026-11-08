@@ -22,8 +22,42 @@ export const Call = __t.object("Call", {
   result: __t.string(),
   dtmf: __t.string(),
   createdAt: __t.timestamp(),
+  checkinId: __t.u64(),
 });
 export type Call = __Infer<typeof Call>;
+
+export const Checkin = __t.object("Checkin", {
+  id: __t.u64(),
+  stormId: __t.u64(),
+  householdId: __t.u64(),
+  state: __t.string(),
+  textsSent: __t.u32(),
+  callsPlaced: __t.u32(),
+  reply: __t.string(),
+  claimedBy: __t.option(__t.identity()),
+  requestId: __t.u64(),
+  simFate: __t.string(),
+  simReplyAt: __t.timestamp(),
+  createdAt: __t.timestamp(),
+  updatedAt: __t.timestamp(),
+});
+export type Checkin = __Infer<typeof Checkin>;
+
+export const Household = __t.object("Household", {
+  id: __t.u64(),
+  name: __t.string(),
+  handle: __t.string(),
+  platform: __t.string(),
+  spaceId: __t.string(),
+  photonSenderId: __t.string(),
+  x: __t.f64(),
+  y: __t.f64(),
+  address: __t.string(),
+  age: __t.u32(),
+  policy: __t.string(),
+  real: __t.bool(),
+});
+export type Household = __Infer<typeof Household>;
 
 export const Outbox = __t.object("Outbox", {
   id: __t.u64(),
@@ -32,6 +66,7 @@ export const Outbox = __t.object("Outbox", {
   payload: __t.string(),
   status: __t.string(),
   createdAt: __t.timestamp(),
+  checkinId: __t.u64(),
 });
 export type Outbox = __Infer<typeof Outbox>;
 
@@ -65,6 +100,16 @@ export const Responder = __t.object("Responder", {
   online: __t.bool(),
 });
 export type Responder = __Infer<typeof Responder>;
+
+export const Storm = __t.object("Storm", {
+  id: __t.u64(),
+  cx: __t.f64(),
+  cy: __t.f64(),
+  r: __t.f64(),
+  startedAt: __t.timestamp(),
+  active: __t.bool(),
+});
+export type Storm = __Infer<typeof Storm>;
 
 export const TickTimer = __t.object("TickTimer", {
   scheduledId: __t.u64(),

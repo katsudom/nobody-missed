@@ -17,4 +17,5 @@ export default __t.row({
   result: __t.string(),
   dtmf: __t.string(),
   createdAt: __t.timestamp().name("created_at"),
+  checkinId: __t.u64().name("checkin_id"),
 });

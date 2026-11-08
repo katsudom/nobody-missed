@@ -35,16 +35,26 @@ import {
 
 // Import all reducer arg schemas
 import CallResultReducer from "./call_result_reducer";
+import CheckinCallResultReducer from "./checkin_call_result_reducer";
+import ClaimCheckinReducer from "./claim_checkin_reducer";
 import ClaimRequestReducer from "./claim_request_reducer";
+import ClearHouseholdsReducer from "./clear_households_reducer";
 import CompleteOutboxReducer from "./complete_outbox_reducer";
+import EndStormReducer from "./end_storm_reducer";
+import EnrollHouseholdReducer from "./enroll_household_reducer";
 import InjectLoadReducer from "./inject_load_reducer";
 import MakeAdminReducer from "./make_admin_reducer";
 import RegisterResponderReducer from "./register_responder_reducer";
+import ReleaseCheckinReducer from "./release_checkin_reducer";
 import ReleaseRequestReducer from "./release_request_reducer";
 import RemoveAdminReducer from "./remove_admin_reducer";
 import ResetDemoReducer from "./reset_demo_reducer";
+import ResolveCheckinReducer from "./resolve_checkin_reducer";
 import ResolveRequestReducer from "./resolve_request_reducer";
+import SeedHouseholdsReducer from "./seed_households_reducer";
 import SetFactsReducer from "./set_facts_reducer";
+import SimulateReplyReducer from "./simulate_reply_reducer";
+import StartStormReducer from "./start_storm_reducer";
 import SubmitRequestReducer from "./submit_request_reducer";
 import TakeOutboxReducer from "./take_outbox_reducer";
 import VictimRepliedReducer from "./victim_replied_reducer";
@@ -54,9 +64,12 @@ import VictimRepliedReducer from "./victim_replied_reducer";
 // Import all table schema definitions
 import AdminRow from "./admin_table";
 import CallRow from "./call_table";
+import CheckinRow from "./checkin_table";
+import HouseholdRow from "./household_table";
 import OutboxRow from "./outbox_table";
 import RequestRow from "./request_table";
 import ResponderRow from "./responder_table";
+import StormRow from "./storm_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -87,6 +100,40 @@ const tablesSchema = __schema({
       { name: 'call_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, CallRow),
+  checkin: __table({
+    name: 'checkin',
+    indexes: [
+      { accessor: 'householdId', name: 'checkin_household_id_idx_btree', algorithm: 'btree', columns: [
+        'householdId',
+      ] },
+      { accessor: 'id', name: 'checkin_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'byState', name: 'checkin_state_idx_btree', algorithm: 'btree', columns: [
+        'state',
+      ] },
+      { accessor: 'stormId', name: 'checkin_storm_id_idx_btree', algorithm: 'btree', columns: [
+        'stormId',
+      ] },
+    ],
+    constraints: [
+      { name: 'checkin_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, CheckinRow),
+  household: __table({
+    name: 'household',
+    indexes: [
+      { accessor: 'handle', name: 'household_handle_idx_btree', algorithm: 'btree', columns: [
+        'handle',
+      ] },
+      { accessor: 'id', name: 'household_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'household_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, HouseholdRow),
   outbox: __table({
     name: 'outbox',
     indexes: [
@@ -129,21 +176,42 @@ const tablesSchema = __schema({
       { name: 'responder_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, ResponderRow),
+  storm: __table({
+    name: 'storm',
+    indexes: [
+      { accessor: 'id', name: 'storm_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'storm_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, StormRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("call_result", CallResultReducer),
+  __reducerSchema("checkin_call_result", CheckinCallResultReducer),
+  __reducerSchema("claim_checkin", ClaimCheckinReducer),
   __reducerSchema("claim_request", ClaimRequestReducer),
+  __reducerSchema("clear_households", ClearHouseholdsReducer),
   __reducerSchema("complete_outbox", CompleteOutboxReducer),
+  __reducerSchema("end_storm", EndStormReducer),
+  __reducerSchema("enroll_household", EnrollHouseholdReducer),
   __reducerSchema("inject_load", InjectLoadReducer),
   __reducerSchema("make_admin", MakeAdminReducer),
   __reducerSchema("register_responder", RegisterResponderReducer),
+  __reducerSchema("release_checkin", ReleaseCheckinReducer),
   __reducerSchema("release_request", ReleaseRequestReducer),
   __reducerSchema("remove_admin", RemoveAdminReducer),
   __reducerSchema("reset_demo", ResetDemoReducer),
+  __reducerSchema("resolve_checkin", ResolveCheckinReducer),
   __reducerSchema("resolve_request", ResolveRequestReducer),
+  __reducerSchema("seed_households", SeedHouseholdsReducer),
   __reducerSchema("set_facts", SetFactsReducer),
+  __reducerSchema("simulate_reply", SimulateReplyReducer),
+  __reducerSchema("start_storm", StartStormReducer),
   __reducerSchema("submit_request", SubmitRequestReducer),
   __reducerSchema("take_outbox", TakeOutboxReducer),
   __reducerSchema("victim_replied", VictimRepliedReducer),
