@@ -12,6 +12,8 @@ import { byLevel, Level, levelOf, mmss, parseReasons, tsMs, useNow, useRun, useT
 import DevTools from './DevTools';
 import PageTabs from './PageTabs';
 import { maskPhone } from './policyholders';
+import WeatherWarnings from './WeatherWarnings';
+import { useWeatherAlerts } from './weather';
 
 type Checkin = Infer<typeof CheckinRowT>;
 type Household = Infer<typeof HouseholdRowT>;
@@ -64,6 +66,7 @@ export default function CheckinBoard() {
   const run = useRun();
   const toast = useToast();
   const now = useNow();
+  const weather = useWeatherAlerts();
   const [checkins, ready] = useTable(tables.checkin);
   const [households] = useTable(tables.household);
   const [storms] = useTable(tables.storm);
@@ -131,6 +134,8 @@ export default function CheckinBoard() {
         <span className={`live ${isActive ? 'on' : ''}`} role="status">{isActive ? 'Live' : 'Reconnecting…'}</span>
         <StormChip storm={storm} now={now} inZone={total} />
       </header>
+
+      <WeatherWarnings weather={weather} />
 
       <div className="cols">
         <section className="card queue">

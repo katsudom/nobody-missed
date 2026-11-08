@@ -4,6 +4,9 @@ import { ScheduleAt, Timestamp } from 'spacetimedb';
 import {
   STORM_FAKE_MAX,
   STORM_AREA,
+  STORM_AREA_BOX,
+  pointInBox,
+  cleanLocation,
   CHECKIN_TEXT,
   OPEN_UNCLAIMED,
   decideTick,
@@ -200,7 +203,21 @@ const undoAction = table(
   }
 );
 
-const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin, teammate, setting, household, storm, checkin, undoAction });
+// Where each person in an impact area is. Keyed by handle so someone who texted in without enrolling counts too.
+const victimLocation = table(
+  { name: 'victim_location', public: true },
+  {
+    handle: t.string().primaryKey(),
+    address: t.string(), // street line, or what they told us; "" if we only know the city
+    city: t.string(),
+    lat: t.option(t.f64()), // no coordinates until something can geocode the address
+    lng: t.option(t.f64()),
+    source: t.string(), // "simulated" (fake household) | "assumed_area" (team phone, placed in the storm area) | "reported" (they told us)
+    updatedAt: t.timestamp(),
+  }
+);
+
+const spacetimedb = schema({ request, responder, outbox, call, tickTimer, admin, teammate, setting, household, storm, checkin, undoAction, victimLocation });
 export default spacetimedb;
 
 type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
@@ -441,6 +458,7 @@ export const setFacts = spacetimedb.reducer(
     if (!ok) r.reasons = JSON.stringify([UNREAD_REASON]);
     if (r.state === 'new') setState(ctx, r, 'waiting');
     save(ctx, r);
+    if (ok) saveReportedLocation(ctx, r.victimHandle, factsJson);
   }
 );
 
@@ -702,11 +720,38 @@ export const resetDemo = spacetimedb.reducer((ctx) => {
   for (const c of [...ctx.db.call.iter()]) ctx.db.call.id.delete(c.id);
   for (const c of [...ctx.db.checkin.iter()]) ctx.db.checkin.id.delete(c.id);
   for (const s of [...ctx.db.storm.iter()]) ctx.db.storm.id.delete(s.id);
+  for (const l of [...ctx.db.victimLocation.iter()]) ctx.db.victimLocation.handle.delete(l.handle); // the next storm records them again
 });
 
 // ---------- Storm check-ins: logic and reducers (docs/checkin-plan.md) ----------
 type CheckinRow = ReturnType<Ctx['db']['checkin']['id']['find']> & {};
 type HouseholdRow = ReturnType<Ctx['db']['household']['id']['find']> & {};
+
+/** Everyone in a storm's area gets a location row. Never overwrites one, so what someone told us survives later storms. */
+function ensureLocation(ctx: Ctx, h: HouseholdRow) {
+  if (ctx.db.victimLocation.handle.find(h.handle)) return;
+  const point = h.real ? undefined : pointInBox(STORM_AREA_BOX, ctx.random(), ctx.random());
+  ctx.db.victimLocation.insert({
+    handle: h.handle,
+    address: h.real ? '' : h.address, // a team phone's address is only the placeholder "Team phone"
+    city: h.city,
+    lat: point?.lat,
+    lng: point?.lng,
+    source: h.real ? 'assumed_area' : 'simulated',
+    updatedAt: ctx.timestamp,
+  });
+}
+
+/** What the person said beats anything we assumed. The old coordinates no longer apply. */
+function saveReportedLocation(ctx: Ctx, handle: string, factsJson: string) {
+  const address = cleanLocation(parseFacts(factsJson).location);
+  if (!address) return;
+  const old = ctx.db.victimLocation.handle.find(handle);
+  const city = old?.city ?? [...ctx.db.household.handle.filter(handle)][0]?.city ?? '';
+  const row = { handle, address, city, lat: undefined, lng: undefined, source: 'reported', updatedAt: ctx.timestamp };
+  if (old) ctx.db.victimLocation.handle.update(row);
+  else ctx.db.victimLocation.insert(row);
+}
 
 const FIRST = ['Maria', 'Harold', 'Dolores', 'Tom', 'Aisha', 'Gary', 'Dev', 'Carla', 'Walt', 'Calvin', 'Janelle', 'Frank',
   'Ruth', 'Marcus', 'Edith', 'Priya', 'Luis', 'Kim', 'Hank', 'Joyce', 'Owen', 'Samir', 'Bea', 'Grace', 'Andre', 'Mei',
@@ -932,6 +977,7 @@ export const resetTeamPhones = spacetimedb.reducer((ctx) => {
       cancelCheckins(ctx, r.id);
       save(ctx, r);
     }
+    ctx.db.victimLocation.handle.delete(h.handle);
     ctx.db.household.id.delete(h.id);
   }
 });
@@ -970,6 +1016,7 @@ export const startStorm = spacetimedb.reducer((ctx) => {
   // Every team phone, plus at most STORM_FAKE_MAX fake households in the area (random ones). All alerted at once.
   const real = [...ctx.db.household.iter()].filter((h) => h.real);
   const fakes = fakesInArea();
+  for (const h of [...real, ...fakes]) ensureLocation(ctx, h);
   for (let i = fakes.length - 1; i > 0; i--) {
     const j = ctx.random.integerInRange(0, i);
     [fakes[i], fakes[j]] = [fakes[j], fakes[i]];
