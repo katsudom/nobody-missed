@@ -140,7 +140,6 @@ export default function DevTools({ onInject, onAskReset }: { onInject?: () => vo
                   ) : (
                     <Action tone="primary" title="Start storm" hint={sandbox ? 'Fake households reply on their own' : 'Texts an alert to every team phone'} onClick={() => run((c) => c.reducers.startStorm({})).then(ok('Storm started in Richardson: alerts sent to every team phone'))} />
                   )}
-                  <Action title="Seed 100 fake households" hint="Shown when Fake data is on" onClick={() => run((c) => c.reducers.seedHouseholds({ n: 100 })).then(ok('Added 100 fake households'))} />
                   {onInject && <Action title="Inject 2,000 reports" hint="Load test the board" onClick={onInject} />}
                 </Section>
               </>
