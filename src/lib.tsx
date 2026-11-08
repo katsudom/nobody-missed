@@ -45,7 +45,7 @@ export function useRun() {
         () => true,
         (e: unknown) => {
           const msg = e instanceof Error ? e.message : String(e);
-          toast(msg.replace(/^.*?(already claimed by)/i, '$1'));
+          toast(msg.replace(/^.*?(already (?:claimed|taken) by)/i, '$1'));
           return false;
         }
       );

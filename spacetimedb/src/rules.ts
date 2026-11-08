@@ -226,11 +226,11 @@ export const STORM_AUTO_SEED = 100;
 export const STORM_RETEXT = 'We have not heard from you. Reply 1 if you are safe, 2 if you need help.';
 
 /** Re-text if no reply to the first alert. */
-export const S1_RETEXT = 15n * UNIT;
+export const S1_RETEXT = 25n * UNIT;
 /** Call if still no reply after the re-text. */
-export const S2_CALL = 10n * UNIT;
+export const S2_CALL = 20n * UNIT;
 /** Urgent if the call was never placed / never answered. */
-export const S3_URGENT = 10n * UNIT;
+export const S3_URGENT = 20n * UNIT;
 
 export type CheckinState =
   | 'texted' // first alert sent, waiting for a reply
