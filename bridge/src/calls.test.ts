@@ -6,7 +6,7 @@ const agent = (message: string | null) => ({ role: 'agent' as const, message });
 const user = (message: string | null) => ({ role: 'user' as const, message });
 
 const QUESTION = agent('If you are safe, press 1 or say I\'m safe. If you are not safe, press 2 or say help.');
-const MENU = agent('Okay, would you like to file a report, or would you like to have someone dispatched to you? Press 1 if you would like to file a report, or press 2 if you would like someone dispatched to you.');
+const MENU = agent('Press 1 or say report if you want to file a report. Press 2 or say dispatch if you want someone dispatched to you.');
 const ASK = agent('Please briefly tell us what happened.');
 const FILED = agent('Okay, we have filed your report, thank you.');
 const SENDING = agent('Okay, someone will be sent your way to help.');
